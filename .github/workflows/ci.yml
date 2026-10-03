@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  core-linux:
+    name: Core tests (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.2-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test MarginCore
+        run: swift test --package-path MarginCore
+
+  watch-build:
+    name: watchOS build (macOS)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i watch || true
+      - name: Test MarginCore (macOS)
+        run: swift test --package-path MarginCore
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build watch app + complications (simulator, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Margin.xcodeproj \
+            -scheme Margin \
+            -configuration Debug \
+            -destination 'generic/platform=watchOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO | tee xcodebuild.log
+      - name: Compiler warnings in project sources
+        run: |
+          grep -E "/(MarginWatch|MarginCore)/[^:]+:[0-9]+:[0-9]+: warning:" xcodebuild.log | sort -u > warnings.txt || true
+          echo "$(wc -l < warnings.txt | tr -d ' ') unique warning(s) in project sources"
+          cat warnings.txt
+      - name: Inspect built bundle
+        run: |
+          APP=$(find build/Build/Products -maxdepth 2 -name 'Margin.app' -type d | head -1)
+          echo "App: $APP"
+          plutil -p "$APP/Info.plist"
+          ls "$APP/PlugIns"
+          plutil -p "$APP/PlugIns/MarginWidgets.appex/Info.plist"
