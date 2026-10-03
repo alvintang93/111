@@ -134,14 +134,23 @@ final class AppModel: ObservableObject {
         await sync(mode: .foreground)
     }
 
-    /// Foreground re-entry. The launch path performs the first sync, so a
-    /// scene-phase change can never race ahead of the permission prompt.
+    /// Foreground re-entry. If authorization is still unresolved (e.g. the
+    /// status query failed earlier) it is re-checked; the in-flight guard keeps
+    /// this from racing the launch path's permission prompt.
     func onBecameActive() async {
+        if !authorizationResolved {
+            await ensureAuthorization(interactive: true)
+        }
         guard authorizationResolved else { return }
         await sync(mode: .foreground)
     }
 
+    private var authorizationInFlight = false
+
     func ensureAuthorization(interactive: Bool) async {
+        guard !authorizationInFlight else { return }
+        authorizationInFlight = true
+        defer { authorizationInFlight = false }
         var requestStatus = await health.requestStatus()
         log(.auth, .info, "authorization request status: \(requestStatus.label)")
         if requestStatus == .shouldRequest && interactive {
@@ -219,7 +228,12 @@ final class AppModel: ObservableObject {
                 let from = today.adding(-(syncParams.historyDays + 1), calendar: cal).date(calendar: cal)
                 let to = today.adding(2, calendar: cal).date(calendar: cal)
                 small = try await fetchSmallInputs(DateInterval(start: from, end: to))
-                fingerprints = SyncPlanner.fingerprints(for: records, input: small, asOf: started, calendar: cal)
+                let historyStart = today.adding(-(syncParams.historyDays - 1), calendar: cal)
+                let inWindow = records.filter { $0.key >= historyStart }
+                let input = small
+                fingerprints = await Task.detached(priority: .userInitiated) {
+                    SyncPlanner.fingerprints(for: inWindow, input: input, asOf: started, calendar: cal)
+                }.value
             }
             let plan = SyncPlanner.plan(existing: records, today: today, calendar: cal, now: started, mode: mode,
                                         currentFingerprints: fingerprints, params: syncParams)
