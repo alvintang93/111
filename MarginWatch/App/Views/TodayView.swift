@@ -21,9 +21,7 @@ struct TodayView: View {
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Text(b.recovery.confidence.label)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    StatusBadge(recovery: b.recovery)
                 } else {
                     EmptyState()
                 }
@@ -31,7 +29,7 @@ struct TodayView: View {
                     Text(status).font(.caption2).foregroundStyle(.orange)
                 }
                 Button {
-                    Task { await model.refresh() }
+                    Task { await model.sync(mode: .foreground) }
                 } label: {
                     Label(model.isRefreshing ? "Refreshing" : "Refresh", systemImage: "arrow.clockwise")
                 }
@@ -124,7 +122,26 @@ struct FlagList: View {
             ForEach(flags, id: \.self) { f in
                 Label(f.title, systemImage: f.symbol)
                     .font(.footnote)
-                    .foregroundStyle(f == .illnessWatch ? Color.red : Color.orange)
+                    .foregroundStyle(Color.orange)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Explicit score status: never leaves the user guessing why there is (or is not) a number.
+struct StatusBadge: View {
+    let recovery: Recovery
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label(recovery.status.label, systemImage: recovery.status.hasScore ? "checkmark.seal" : "exclamationmark.circle")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(recovery.status.color)
+            if recovery.status != .scored {
+                Text(recovery.statusDetail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

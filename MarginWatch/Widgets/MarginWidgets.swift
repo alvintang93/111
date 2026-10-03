@@ -4,34 +4,40 @@ import MarginCore
 
 struct BriefEntry: TimelineEntry {
     let date: Date
-    let brief: DailyBrief?
-
-    /// Nil when the saved brief is from a previous day: stale scores are never shown.
-    var current: DailyBrief? {
-        guard let b = brief, b.isCurrent(now: date) else { return nil }
-        return b
-    }
+    /// Rendering is fully determined by `MarginCore.ComplicationState`, which is
+    /// unit-tested for every state (score, calibrating, pending, unavailable, stale).
+    let state: ComplicationState
 }
 
 struct BriefProvider: TimelineProvider {
     func placeholder(in context: Context) -> BriefEntry {
-        BriefEntry(date: Date(), brief: nil)
+        BriefEntry(date: Date(), state: ComplicationState.make(brief: nil, now: Date(), calendar: .current))
     }
 
     func getSnapshot(in context: Context, completion: @escaping (BriefEntry) -> Void) {
-        completion(BriefEntry(date: Date(), brief: SharedStore.loadBrief()))
+        let now = Date()
+        completion(BriefEntry(date: now, state: ComplicationState.make(brief: SharedStore.loadBrief(), now: now,
+                                                                        calendar: .current)))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<BriefEntry>) -> Void) {
         let now = Date()
-        let brief = SharedStore.loadBrief()
-        var entries = [BriefEntry(date: now, brief: brief)]
-        // Add an entry at midnight so yesterday's score blanks out on its own.
         let cal = Calendar.current
+        let brief = SharedStore.loadBrief()
+        var entries = [BriefEntry(date: now, state: ComplicationState.make(brief: brief, now: now, calendar: cal))]
+        // Re-evaluate at midnight so yesterday's score blanks out without the app running.
         if let midnight = cal.nextDate(after: now, matching: DateComponents(hour: 0, minute: 0), matchingPolicy: .nextTime) {
-            entries.append(BriefEntry(date: midnight, brief: brief))
+            entries.append(BriefEntry(date: midnight, state: ComplicationState.make(brief: brief, now: midnight, calendar: cal)))
         }
-        completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(30 * 60))))
+        let next = now.addingTimeInterval(30 * 60)
+        var beat = SharedStore.loadHeartbeat() ?? WidgetHeartbeat()
+        beat.lastTimelineAt = now
+        beat.nextRefreshRequested = next
+        beat.lastKind = entries[0].state.kind
+        beat.briefDecoded = brief != nil
+        beat.timelines += 1
+        SharedStore.saveHeartbeat(beat)
+        completion(Timeline(entries: entries, policy: .after(next)))
     }
 }
 
@@ -39,16 +45,15 @@ struct MarginWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: BriefEntry
 
-    private var score: Int? { entry.current?.recovery.score }
-    private var color: Color { entry.current?.recovery.band.color ?? .gray }
-    private var scoreText: String { score.map { "\($0)" } ?? "–" }
+    private var s: ComplicationState { entry.state }
+    private var color: Color { s.kind == .score ? s.band.color : .gray }
 
     var body: some View {
         switch family {
         case .accessoryRectangular:
             rectangular
         case .accessoryInline:
-            inline
+            Text(s.inline)
         case .accessoryCorner:
             corner
         default:
@@ -57,59 +62,41 @@ struct MarginWidgetView: View {
     }
 
     private var circular: some View {
-        Gauge(value: Double(score ?? 0), in: 0...100) {
-            Image(systemName: "heart.fill")
+        Gauge(value: s.gaugeFraction, in: 0...1) {
+            Image(systemName: s.kind == .score ? "heart.fill" : "hourglass")
         } currentValueLabel: {
-            Text(scoreText)
+            Text(s.kind == .calibrating ? "CAL" : s.scoreText)
         }
         .gaugeStyle(.accessoryCircular)
         .tint(color)
     }
 
     private var corner: some View {
-        Text(scoreText)
+        Text(s.kind == .calibrating ? "CAL" : s.scoreText)
             .font(.title3.bold())
             .foregroundStyle(color)
             .widgetLabel {
-                Gauge(value: Double(score ?? 0), in: 0...100) {
+                Gauge(value: s.gaugeFraction, in: 0...1) {
                     Text("REC")
                 }
                 .tint(color)
             }
     }
 
-    private var inline: some View {
-        if let b = entry.current {
-            return Text("\(scoreText) · \(b.plan.directive.title)")
-        }
-        return Text("Margin · open app")
-    }
-
-    @ViewBuilder
     private var rectangular: some View {
-        if let b = entry.current {
-            VStack(alignment: .leading, spacing: 1) {
-                HStack {
-                    Text("REC \(scoreText)").font(.headline).foregroundStyle(color)
-                    Spacer()
-                    Text(b.plan.directive.title).font(.caption.bold()).foregroundStyle(b.plan.directive.color)
-                }
-                if let lo = b.plan.targetLow, let hi = b.plan.targetHigh {
-                    Text("Load \(Fmt.load(b.load.todayLoad)) / \(Fmt.load(lo))–\(Fmt.load(hi))")
-                        .font(.caption)
-                } else {
-                    Text("Load \(Fmt.load(b.load.todayLoad))").font(.caption)
-                }
-                if let flag = b.recovery.flags.first {
-                    Label(flag.title, systemImage: flag.symbol).font(.caption2).foregroundStyle(.orange)
-                } else {
-                    Text(b.recovery.confidence.label).font(.caption2).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 1) {
+            HStack {
+                Text(s.headline).font(.headline).foregroundStyle(color)
+                Spacer()
+                if let d = s.directive, s.kind == .score {
+                    Text(ComplicationState.directiveTitle(d)).font(.caption.bold()).foregroundStyle(d.color)
                 }
             }
-        } else {
-            VStack(alignment: .leading) {
-                Text("Margin").font(.headline)
-                Text("Open to update").font(.caption).foregroundStyle(.secondary)
+            Text(s.detail).font(.caption)
+            if !s.footnote.isEmpty {
+                Text(s.footnote)
+                    .font(.caption2)
+                    .foregroundStyle(s.footnoteIsWarning ? Color.orange : Color.secondary)
             }
         }
     }
@@ -121,8 +108,8 @@ struct MarginRecoveryWidget: Widget {
             MarginWidgetView(entry: entry)
                 .containerBackground(.clear, for: .widget)
         }
-        .configurationDisplayName("Recovery")
-        .description("Recovery score, directive and today's load target.")
+        .configurationDisplayName("Readiness")
+        .description("Readiness score, recommendation and today's load target.")
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
     }
 }

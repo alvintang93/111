@@ -25,7 +25,7 @@ final class EngineTests: XCTestCase {
         XCTAssertTrue((35...65).contains(r.score!), "score \(r.score!)")
         XCTAssertEqual(r.baselineDays, 60)
         XCTAssertEqual(r.components.reduce(0) { $0 + $1.weight }, 1, accuracy: 1e-12)
-        XCTAssertFalse(r.flags.contains(.illnessWatch))
+        XCTAssertFalse(r.flags.contains(.elevatedVitals))
         XCTAssertNotNil(brief.plan.targetLow)
         XCTAssertNotNil(brief.load.acwr)
         XCTAssertEqual(brief.history.count, 14)
@@ -61,12 +61,12 @@ final class EngineTests: XCTestCase {
         var records = syntheticHistory(today: today, count: 90)
         // Elevated sleeping HR alone: no illness flag (guards against false alarms).
         records = replacingToday(records, with: syntheticRecord(day: today, lnHRV: log(55), sleepingHR: 58))
-        XCTAssertFalse(engine(records).brief(generatedAt: fixedNow).recovery.flags.contains(.illnessWatch))
+        XCTAssertFalse(engine(records).brief(generatedAt: fixedNow).recovery.flags.contains(.elevatedVitals))
         // Plus elevated temperature: flag + rest.
         records = replacingToday(records, with: syntheticRecord(day: today, lnHRV: log(55), sleepingHR: 58,
                                                                 temperature: 35.2))
         let brief = engine(records).brief(generatedAt: fixedNow)
-        XCTAssertTrue(brief.recovery.flags.contains(.illnessWatch))
+        XCTAssertTrue(brief.recovery.flags.contains(.elevatedVitals))
         XCTAssertEqual(brief.plan.directive, .rest)
         XCTAssertLessThanOrEqual(brief.plan.targetHigh!, 0.3 * brief.load.ctl! + 1e-9)
     }

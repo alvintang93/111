@@ -14,6 +14,19 @@ Every number on the watch traces back to this document and to one constant in
 | Wrist temperature | `appleSleepingWristTemperature` | Sample *ends* in sleep window | Mean |
 | Apple resting HR | `restingHeartRate` | Calendar day *D* | Mean (used only for TRIMP HRrest) |
 | Training load | `heartRate` | 00:00 → 24:00 *D* | Time-at-HR histogram |
+| Workouts | `HKWorkout` | 00:00 → 24:00 *D* | Count by start day, minutes split across midnight, HR coverage. **Diagnostics only**; load still comes from heart rate |
+
+**Windows are stored with each day.** A day's windows are computed in the
+current time zone when it is first built and are then kept, including when the
+day is rebuilt. A new day starts exactly where the previous stored day ended,
+and a backfilled day is clipped to the next stored day. Days therefore tile time
+with no overlap and no gap across time-zone changes and DST.
+
+**Sample hygiene** happens before any aggregation; every rejection is counted per input:
+- Range limits: HR 25–250 bpm, SDNN 1–400 ms, resting HR 25–200, respiration 4–60 /min, wrist temperature −10–45 °C. The temperature range is wide because it must accept both absolute and deviation-style values until a device confirms which form HealthKit stores.
+- Durations must be positive (sleep, workouts) or non-negative (point samples), and at most 24 h.
+- Exact duplicates are removed.
+- Samples starting more than 60 s after the build time are rejected as future-dated.
 
 **Sleep aggregation.** Only the highest-priority source in the window is used
 (Apple Watch = 2, anything else = 1), so iPhone and Watch sleep data are never
@@ -60,32 +73,60 @@ sleeping under the stated need) put 29% of stationary days in the red band.
 
 **Bands** (display only): ≥67 primed, ≤33 depleted, otherwise steady.
 
-**Confidence**:
-- *Calibrating*: no HRV or sleeping-HR baseline yet. No score is shown.
-- *No data*: neither HRV nor sleeping HR last night. No score is shown.
-- *High*: HRV during sleep, sleeping HR and sleep all present, with an HRV baseline of at least 30 days.
+**Score status** is always explicit. Only the last three statuses show a number, and only `Scored` allows Push:
+
+| Status | Score? | Condition |
+|---|---|---|
+| Night in progress | no | Today, before 30 min after the main sleep bout ends; if no sleep is recorded, before the fallback window ends (10:00) |
+| HRV unavailable | no | No HRV at all in the 60-day window although a sleeping-HR baseline exists (permission off, or HRV not recorded) |
+| Calibrating | no | Fewer than 14 HRV nights in the 60-day window. **An HRV baseline is required for any score** |
+| No overnight data | no | Neither HRV nor sleeping HR for the night |
+| Partial data (degraded) | yes | HRV or sleeping HR missing for the night (or its baseline missing). Push is disabled |
+| Provisional | yes | Full inputs, but fewer than 20 prior composite days, so the scale uses the √Σw² fallback. Push is disabled |
+| Scored | yes | Full inputs and a calibrated scale |
+
+**Confidence** (retained as a secondary label):
+- *Calibrating*: no HRV baseline.
+- *No data*: neither core input.
+- *High*: HRV during sleep, sleeping HR and sleep present, with an HRV baseline of at least 30 days.
 - *Medium*: HRV plus sleeping HR or sleep.
-- *Low*: anything else.
+- *Low*: otherwise.
 
 ## 4. Flags
 
 | Flag | Rule |
 |---|---|
-| Illness watch | Sleeping HR z ≥ +2 **and** (temperature z ≥ +2 **or** respiration z ≥ +2) |
+| Elevated overnight vitals | Sleeping HR z ≥ +2 **and** (temperature z ≥ +2 **or** respiration z ≥ +2). A measurement pattern, not an assessment of any health condition |
 | HRV trend low | Mean lnHRV of the last 7 days (≥4 present) < baseline − 0.5 × scale (smallest-worthwhile-change convention) |
 | Load spike | ATL/CTL through yesterday > 1.5 |
 | Sleep debt | 7-night accumulated shortfall vs base need ≥ 5 h (missing nights are not counted as debt) |
 
-The illness rule is a conjunction on purpose. A single elevated signal, such as
-a hot room or a late meal, does not fire it.
+The elevated-vitals rule is a conjunction on purpose. A single elevated signal,
+such as a hot room or a late meal, does not fire it.
 
 ## 5. Directive (decision rule)
 
-1. Illness watch → **Rest**.
+0. No score → no recommendation: *Pending* (night in progress), *Calibrating*, or *No data*.
+1. Elevated overnight vitals → **Rest**.
 2. Score ≤ 15 → **Recover**.
 3. Score ≤ 33 **and** (HRV trend low **or** sleep debt) → **Recover**. Score ≤ 33 alone → **Maintain**, with "cap intensity".
-4. Score ≥ 67 → **Push**, demoted to **Maintain** if confidence is low, HRV trend is low, there is a load spike, or there is sleep debt.
+4. Score ≥ 67 → **Push**, demoted to **Maintain** unless all of these hold:
+   - status is *Scored*;
+   - confidence is above low;
+   - the HRV trend is not low;
+   - there is no load spike;
+   - there is no sleep debt.
 5. Otherwise → **Maintain**.
+
+Every evaluation is recorded as an ordered rule trace (rule, passed, detail),
+shown in Developer diagnostics. A recomputed distribution of recommendations,
+scores and component z over the 60-day window is shown too, together with an
+on-device log of what was actually issued each day. None of this feeds back into
+thresholds.
+
+A recommendation describes how today's sensor readings compare with your own
+history. Push does not mean exercise is medically appropriate. Recover or Rest
+does not mean you are unwell.
 
 The rules are deliberately asymmetric. Pushing while fatigued costs more than an
 easy day while fresh, so "Push" needs clean evidence and "Recover" needs either a
@@ -112,7 +153,7 @@ same 28-day/CTL ≥ 10 rule applies to load targets.
 - Recover: 0–0.5×
 - Rest: 0–0.3×
 
-**Ceiling (risk limit).** The largest load *L* today such that ATL/CTL after
+**Ceiling (load-change limit).** The largest load *L* today such that ATL/CTL after
 today ≤ *r* (default 1.3):
 
   L ≤ [r·CTL·(1−k₄₂) − ATL·(1−k₇)] / (k₇ − r·k₄₂)
@@ -152,17 +193,28 @@ scored days:
 | Mean score | 50.4 |
 | Days in red band | 32% (by construction ≈ terciles) |
 | False "Recover" (type I) | 18.6% of days (test fails above 20%) |
-| False "Rest" / illness | 0.14% of days |
+| False "Rest" (elevated vitals) | 0.14% of days |
 | Detection of a real 5-day drop (HRV −22%, sleeping HR +3 bpm) | 20/20 (test fails below 90%) |
 
 Statistical routines are checked against SciPy 1.17 to 1e-12: the normal CDF,
 the regularized incomplete beta, Student-t p-values and Welch's t.
 
-## 10. Where this can be wrong
+## 10. Sync and reconciliation
+
+- **Foreground (app open):** all non-heart-rate inputs are re-queried for the 120-day window. Each cached day's data is fingerprinted (FNV-1a over cleaned samples in its windows). Days whose fingerprint changed (added, corrected or deleted data, or a revoked permission) are rebuilt. The last 3 days are always rebuilt. Never-built days are built, and empty days are retried every 24 h.
+- **Background (watchOS refresh):** at most 2 of the most recent days are built; everything else waits for the foreground.
+- **Failures:** a failed query aborts the sync and keeps the previous data. It is never interpreted as "no data". Progress is saved every 10 built days.
+- **Not detected:** heart-rate corrections older than 3 days (heart rate is not fingerprinted because re-reading 120 days of it is too costly). *Settings → Rebuild from Health* forces a full re-read.
+
+Details and the failure-point inventory are in [`PIPELINE_AUDIT.md`](PIPELINE_AUDIT.md).
+
+## 11. Where this can be wrong
 
 - **No clinical validation.** Weights, the 0.30 HRR floor, the sleep-need rules and the band cut-offs are reasoned heuristics. Error rates are measured on simulated Gaussian data, and real physiology has autocorrelation, seasonality and artefacts.
 - **SDNN, not RMSSD.** Apple exposes SDNN. Its overnight sampling is sparse (a few readings), so nightly HRV is noisy. Baselines and the 7-day trend partly absorb this.
-- **The menstrual cycle raises wrist temperature** by a few tenths of a °C in the luteal phase. Temperature penalises only beyond +1 SD, carries 7.5% weight, and joins the illness flag only together with elevated sleeping HR. Some cycle-driven shifts may still show up.
+- **The menstrual cycle raises wrist temperature** by a few tenths of a °C in the luteal phase. Temperature penalises only beyond +1 SD, carries 7.5% weight, and joins the elevated-vitals flag only together with elevated sleeping HR. Some cycle-driven shifts may still show up.
 - **TRIMP without a workout** relies on background HR sampling, which is sparse, so unrecorded activity is under-counted. Start a workout for anything that matters.
-- **Time zones.** Cached days keep the windows of the zone in which they were built.
+- **Time zones.** Cached days keep the windows of the zone in which they were built (by design, see §1). *Rebuild from Health* re-splits all days in the current zone.
+- **Wrist temperature form.** Whether HealthKit stores absolute or deviation values is unverified. Scoring is relative to your own baseline, so both work, but this should be confirmed on device.
+- **Overnight-closed rule.** If you are still asleep at 10:00 and no sleep has been recorded yet, a score can be computed from a partial night.
 - **ACWR** is a contested injury-risk predictor in the literature. Here it is used only as a load-change speed limit, not as an injury model.

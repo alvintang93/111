@@ -34,7 +34,8 @@ public struct Component: Codable, Sendable, Equatable, Identifiable {
 
 public enum Flag: String, Codable, Sendable, CaseIterable {
     /// Sleeping HR >= +2 SD AND (wrist temp or respiratory rate >= +2 SD).
-    case illnessWatch
+    /// A measurement pattern, not a diagnosis of any condition.
+    case elevatedVitals
     /// 7-day mean ln HRV below baseline minus the smallest worthwhile change.
     case hrvTrendLow
     /// ATL/CTL above the spike threshold.
@@ -55,10 +56,79 @@ public struct Recovery: Codable, Sendable, Equatable {
     public var components: [Component]
     public var flags: [Flag]
     public var baselineDays: Int
+    /// Whether a score exists and how trustworthy it is. Explicit, never inferred from nil.
+    public var status: ScoreStatus
+    public var calibration: CalibrationStatus
+    /// Human-readable reason for `status`.
+    public var statusDetail: String
+    /// Core inputs (HRV, sleeping HR) missing for the scored night.
+    public var missingInputs: [ComponentKind]
 }
 
-public enum Directive: String, Codable, Sendable {
+/// Score availability, most severe first. Only `.scored` may produce Push.
+public enum ScoreStatus: String, Codable, Sendable, CaseIterable {
+    /// No score: the overnight window has not closed yet.
+    case nightInProgress
+    /// No score: no HRV at all in the baseline window although sleeping HR exists
+    /// (HRV permission off, or HRV not being recorded).
+    case hrvUnavailable
+    /// No score: fewer than the required HRV nights.
+    case calibrating
+    /// No score: neither HRV nor sleeping HR for the night.
+    case noOvernightData
+    /// Score shown, but HRV or sleeping HR is missing for the night. Push blocked.
+    case degraded
+    /// Score shown, but its scale uses the early-history fallback. Push blocked.
+    case provisional
+    /// Score shown with full inputs and a calibrated scale.
+    case scored
+
+    public var hasScore: Bool {
+        switch self {
+        case .degraded, .provisional, .scored: return true
+        case .nightInProgress, .hrvUnavailable, .calibrating, .noOvernightData: return false
+        }
+    }
+}
+
+public struct CalibrationStatus: Codable, Sendable, Equatable {
+    public enum Stage: String, Codable, Sendable {
+        /// HRV nights below the minimum: no score.
+        case insufficientHRV
+        /// Score available; composite scale still on the theoretical fallback.
+        case provisionalScale
+        case calibrated
+    }
+
+    public var stage: Stage
+    /// Nights with HRV in the baseline window (the valid calibration days).
+    public var hrvNights: Int
+    public var hrvNightsRequired: Int
+    public var sleepingHRNights: Int
+    /// Prior days with a composite available for score calibration.
+    public var compositeDays: Int
+    public var compositeDaysRequired: Int
+}
+
+/// One step of the recommendation rule chain, recorded in evaluation order.
+public struct RuleCheck: Codable, Sendable, Equatable, Identifiable {
+    public var rule: String
+    public var passed: Bool
+    public var detail: String
+    public var id: String { rule }
+}
+
+public enum Directive: String, Codable, Sendable, CaseIterable {
     case push, maintain, recover, rest, calibrating, noData
+    /// Overnight window still open; no recommendation yet.
+    case pending
+
+    public var isRecommendation: Bool {
+        switch self {
+        case .push, .maintain, .recover, .rest: return true
+        case .calibrating, .noData, .pending: return false
+        }
+    }
 }
 
 public struct Plan: Codable, Sendable, Equatable {
@@ -69,6 +139,8 @@ public struct Plan: Codable, Sendable, Equatable {
     /// Max load today keeping ATL/CTL at or below the user's ceiling.
     public var ceiling: Double?
     public var reasons: [String]
+    /// Every rule evaluated to reach `directive`, in order.
+    public var trace: [RuleCheck]
 }
 
 public struct SleepSummary: Codable, Sendable, Equatable {
@@ -135,4 +207,8 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var tagImpacts: [TagImpact]
     public var hrMaxUsed: Double
     public var hrRestUsed: Double
+    /// Last successful HealthKit sync the records reflect (set by the app).
+    public var dataSyncedAt: Date?
+    /// Everything the diagnostics screen shows, produced by the same engine pass.
+    public var audit: BriefAudit
 }

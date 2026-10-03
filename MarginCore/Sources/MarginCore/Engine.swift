@@ -1,7 +1,7 @@
 import Foundation
 
 /// Turns cached `DayRecord`s into scores. Pure and deterministic: the same
-/// records, settings and parameters always produce the same brief.
+/// records, settings, parameters and `asOf` always produce the same brief.
 public struct Engine {
     public let calendar: Calendar
     public let today: Day
@@ -9,6 +9,11 @@ public struct Engine {
     public let params: ModelParameters
     public let hrMax: Double
     public let hrRest: Double
+    public let hrMaxSource: String
+    public let hrRestSource: String
+    /// Wall-clock time of evaluation. When set, today's score is withheld until
+    /// the overnight window has closed. Nil disables that check (history, tests).
+    public let asOf: Date?
 
     /// Contiguous days from the oldest record to today.
     let days: [Day]
@@ -18,12 +23,12 @@ public struct Engine {
     var todayIndex: Int { days.count - 1 }
 
     final class Cache {
-        var composites: [Int: Double?] = [:]
+        var raw: [Int: RawRecovery] = [:]
     }
     let cache = Cache()
 
     public init(records input: [DayRecord], today: Day, settings: UserSettings,
-                calendar: Calendar, params: ModelParameters = .standard) {
+                calendar: Calendar, params: ModelParameters = .standard, asOf: Date? = nil) {
         var map: [Day: DayRecord] = [:]
         for r in input where r.day <= today { map[r.day] = r }
         let first = map.keys.min() ?? today
@@ -33,14 +38,26 @@ public struct Engine {
         let appleRHR = hrRestWindow.compactMap { map[$0]?.appleRestingHR }
         let sleepingHR = hrRestWindow.compactMap { map[$0]?.sleepingHR }
         let hrRest: Double
+        let hrRestSource: String
         if appleRHR.count >= 7, let m = Stats.median(appleRHR) {
             hrRest = m
+            hrRestSource = "Apple resting HR, median of \(appleRHR.count) days"
         } else if sleepingHR.count >= 7, let m = Stats.median(sleepingHR) {
             hrRest = m
+            hrRestSource = "Sleeping HR, median of \(sleepingHR.count) nights (Apple resting HR < 7 days)"
         } else {
             hrRest = 60
+            hrRestSource = "Default 60 bpm (fewer than 7 days of resting/sleeping HR)"
         }
         let hrMax = settings.resolvedHRMax
+        let hrMaxSource: String
+        if let h = settings.hrMaxOverride, h > 100 {
+            hrMaxSource = "Measured (Settings)"
+        } else if let a = settings.age, a > 0 {
+            hrMaxSource = "208 - 0.7 x age (\(a))"
+        } else {
+            hrMaxSource = "Default 190 bpm (age unknown)"
+        }
 
         let completed = Array(days.dropLast())
         let loads: [Double?] = completed.map { d in
@@ -55,9 +72,16 @@ public struct Engine {
         self.params = params
         self.hrMax = hrMax
         self.hrRest = hrRest
+        self.hrMaxSource = hrMaxSource
+        self.hrRestSource = hrRestSource
+        self.asOf = asOf
         self.days = days
         self.records = map
         self.loadPoints = LoadModel.run(days: completed, loads: loads, params: params)
+    }
+
+    func windows(at i: Int) -> DayWindows {
+        records[days[i]]?.windows ?? .nominal(for: days[i], calendar: calendar)
     }
 
     // MARK: - Load
@@ -105,7 +129,8 @@ public struct Engine {
         let need = sleepNeed(nightIndex: i)
         let midpoints: [Double] = (max(0, i - params.consistencyNights + 1)...i).compactMap { k in
             guard let n = records[days[k]]?.sleep else { return nil }
-            return n.mainMidpoint.timeIntervalSince(days[k].nightWindow(calendar: calendar).start) / 60
+            // The stored window keeps midpoints comparable across time-zone changes.
+            return n.mainMidpoint.timeIntervalSince(windows(at: k).night.start) / 60
         }
         let sd = SleepModel.midpointVariability(minutesSinceWindowStart: midpoints, params: params)
         let perf = night.asleep / need.total
@@ -132,10 +157,13 @@ public struct Engine {
 
     // MARK: - Recovery
 
-    func baseline(_ key: KeyPath<DayRecord, Double?>, before i: Int, floor: Double) -> RobustBaseline? {
+    func baselineValues(_ key: KeyPath<DayRecord, Double?>, before i: Int) -> [Double] {
         let lo = max(0, i - params.baselineWindowDays)
-        let values = days[lo..<i].compactMap { records[$0]?[keyPath: key] }
-        return RobustBaseline(values: values, minCount: params.minBaselineDays, scaleFloor: floor)
+        return days[lo..<i].compactMap { records[$0]?[keyPath: key] }
+    }
+
+    func baseline(_ key: KeyPath<DayRecord, Double?>, before i: Int, floor: Double) -> RobustBaseline? {
+        RobustBaseline(values: baselineValues(key, before: i), minCount: params.minBaselineDays, scaleFloor: floor)
     }
 
     public func recovery(for day: Day) -> Recovery? {
@@ -144,20 +172,41 @@ public struct Engine {
 
     struct RawRecovery {
         var components: [Component]
+        /// Nil whenever no score may be produced (a status without a score).
         var composite: Double?
         var confidence: Confidence
         var flags: [Flag]
-        var baselineDays: Int
+        var hrvNights: Int
+        var sleepingHRNights: Int
+        /// Status before score-scale calibration and night-in-progress are applied.
+        var dataStatus: ScoreStatus
+        var missingInputs: [ComponentKind]
+        var baselines: [BaselineSnapshot]
     }
 
     /// Components, uncalibrated composite, confidence and flags for `days[i]`.
     func rawRecovery(at i: Int) -> RawRecovery {
+        if let cached = cache.raw[i] { return cached }
+        let r = computeRawRecovery(at: i)
+        cache.raw[i] = r
+        return r
+    }
+
+    private func computeRawRecovery(at i: Int) -> RawRecovery {
         let rec = records[days[i]]
-        let hrvB = baseline(\.lnHRV, before: i, floor: params.hrvScaleFloor)
-        let rhrB = baseline(\.sleepingHR, before: i, floor: params.restingHRScaleFloor)
+        let hrvValues = baselineValues(\.lnHRV, before: i)
+        let rhrValues = baselineValues(\.sleepingHR, before: i)
+        let hrvB = RobustBaseline(values: hrvValues, minCount: params.minBaselineDays, scaleFloor: params.hrvScaleFloor)
+        let rhrB = RobustBaseline(values: rhrValues, minCount: params.minBaselineDays, scaleFloor: params.restingHRScaleFloor)
         let rrB = baseline(\.respiratoryRate, before: i, floor: params.respiratoryScaleFloor)
         let tempB = baseline(\.wristTemperature, before: i, floor: params.temperatureScaleFloor)
         let zc = params.zClamp
+
+        var baselines: [BaselineSnapshot] = []
+        if let b = hrvB { baselines.append(BaselineSnapshot(kind: .hrv, center: exp(b.center), scale: b.scale, count: b.count)) }
+        if let b = rhrB { baselines.append(BaselineSnapshot(kind: .restingHR, center: b.center, scale: b.scale, count: b.count)) }
+        if let b = rrB { baselines.append(BaselineSnapshot(kind: .respiratoryRate, center: b.center, scale: b.scale, count: b.count)) }
+        if let b = tempB { baselines.append(BaselineSnapshot(kind: .wristTemperature, center: b.center, scale: b.scale, count: b.count)) }
 
         var comps: [Component] = []
         // Array, not Dictionary: floating-point sums must run in a fixed order
@@ -208,8 +257,23 @@ public struct Engine {
 
         let has = Set(comps.map(\.kind))
         let hasCore = has.contains(.hrv) || has.contains(.restingHR)
+        let missing = [ComponentKind.hrv, .restingHR].filter { !has.contains($0) }
+
+        // HRV is the primary signal: no HRV baseline, no score. A score built
+        // from heart rate alone would look normal while missing its main input.
+        let dataStatus: ScoreStatus
+        if hrvB == nil {
+            dataStatus = hrvValues.isEmpty && rhrB != nil ? .hrvUnavailable : .calibrating
+        } else if !hasCore {
+            dataStatus = .noOvernightData
+        } else if !missing.isEmpty {
+            dataStatus = .degraded
+        } else {
+            dataStatus = .scored
+        }
+
         let confidence: Confidence
-        if hrvB == nil && rhrB == nil {
+        if hrvB == nil {
             confidence = .calibrating
         } else if !hasCore {
             confidence = .noData
@@ -223,9 +287,9 @@ public struct Engine {
         }
 
         var flags: [Flag] = []
-        if let r = rhrRaw, r >= params.illnessZ,
-           (tempRaw ?? -.infinity) >= params.illnessZ || (rrRaw ?? -.infinity) >= params.illnessZ {
-            flags.append(.illnessWatch)
+        if let r = rhrRaw, r >= params.elevatedVitalsZ,
+           (tempRaw ?? -.infinity) >= params.elevatedVitalsZ || (rrRaw ?? -.infinity) >= params.elevatedVitalsZ {
+            flags.append(.elevatedVitals)
         }
         if let b = hrvB {
             let recent = days[max(0, i - params.hrvTrendDays + 1)...i].compactMap { records[$0]?.lnHRV }
@@ -241,17 +305,20 @@ public struct Engine {
             flags.append(.sleepDebt)
         }
 
-        let composite = hasCore && confidence != .calibrating
-            ? comps.reduce(0) { $0 + $1.contribution } : nil
-        return RawRecovery(components: comps, composite: composite, confidence: confidence,
-                           flags: flags, baselineDays: hrvB?.count ?? 0)
+        let composite = dataStatus.hasScore ? comps.reduce(0) { $0 + $1.contribution } : nil
+        return RawRecovery(components: comps, composite: composite, confidence: confidence, flags: flags,
+                           hrvNights: hrvValues.count, sleepingHRNights: rhrValues.count,
+                           dataStatus: dataStatus, missingInputs: hasCore ? missing : [],
+                           baselines: baselines)
     }
 
     func composite(at i: Int) -> Double? {
-        if let cached = cache.composites[i] { return cached }
-        let c = rawRecovery(at: i).composite
-        cache.composites[i] = .some(c)
-        return c
+        rawRecovery(at: i).composite
+    }
+
+    func compositeHistory(before i: Int) -> [Double] {
+        let lo = max(0, i - params.baselineWindowDays)
+        return (lo..<i).compactMap { composite(at: $0) }
     }
 
     /// Robust centre/scale of the person's own recent composites. Without this,
@@ -259,19 +326,47 @@ public struct Engine {
     /// paint every day red: on stationary data the raw composite put 29% of days
     /// in the bottom band.
     func compositeCalibration(before i: Int) -> RobustBaseline? {
-        let lo = max(0, i - params.baselineWindowDays)
-        let history = (lo..<i).compactMap { composite(at: $0) }
-        return RobustBaseline(values: history, minCount: params.minCalibrationDays,
-                              scaleFloor: params.compositeScaleFloor)
+        RobustBaseline(values: compositeHistory(before: i), minCount: params.minCalibrationDays,
+                       scaleFloor: params.compositeScaleFloor)
+    }
+
+    /// True once today's overnight data can be considered complete.
+    func overnightClosed(at i: Int) -> Bool {
+        guard i == todayIndex, let now = asOf else { return true }
+        if let night = records[days[i]]?.sleep, now >= night.mainWake.addingTimeInterval(params.overnightSettleTime) {
+            return true
+        }
+        return now >= windows(at: i).fallbackOvernight.end
     }
 
     func recovery(at i: Int) -> Recovery {
         let raw = rawRecovery(at: i)
+        let history = compositeHistory(before: i)
+        let cal = RobustBaseline(values: history, minCount: params.minCalibrationDays,
+                                 scaleFloor: params.compositeScaleFloor)
+        let stage: CalibrationStatus.Stage
+        if raw.hrvNights < params.minBaselineDays {
+            stage = .insufficientHRV
+        } else {
+            stage = cal == nil ? .provisionalScale : .calibrated
+        }
+        let calibration = CalibrationStatus(
+            stage: stage, hrvNights: raw.hrvNights, hrvNightsRequired: params.minBaselineDays,
+            sleepingHRNights: raw.sleepingHRNights,
+            compositeDays: history.count, compositeDaysRequired: params.minCalibrationDays)
+
+        var status = raw.dataStatus
+        if !overnightClosed(at: i) {
+            status = .nightInProgress
+        } else if status == .scored && cal == nil {
+            status = .provisional
+        }
+
         var score: Int?, relative: Double?, calibrationDays = 0
         var band = RecoveryBand.unknown
-        if let c = raw.composite {
+        if status.hasScore, let c = raw.composite {
             let z: Double
-            if let cal = compositeCalibration(before: i) {
+            if let cal {
                 z = cal.z(c)
                 calibrationDays = cal.count
             } else {
@@ -284,53 +379,101 @@ public struct Engine {
             score = s
             band = s >= params.primedThreshold ? .primed : (s <= params.depletedThreshold ? .depleted : .steady)
         }
-        return Recovery(score: score, band: band, composite: raw.composite, relativeZ: relative,
-                        calibrationDays: calibrationDays, confidence: raw.confidence,
-                        components: raw.components, flags: raw.flags, baselineDays: raw.baselineDays)
+        return Recovery(score: score, band: band, composite: status.hasScore ? raw.composite : nil,
+                        relativeZ: relative, calibrationDays: calibrationDays, confidence: raw.confidence,
+                        components: raw.components, flags: raw.flags, baselineDays: raw.hrvNights,
+                        status: status, calibration: calibration,
+                        statusDetail: detail(for: status, raw: raw, calibration: calibration),
+                        missingInputs: raw.missingInputs)
+    }
+
+    func detail(for status: ScoreStatus, raw: RawRecovery, calibration c: CalibrationStatus) -> String {
+        let missing = raw.missingInputs.map { $0 == .hrv ? "HRV" : "sleeping heart rate" }.joined(separator: " and ")
+        switch status {
+        case .nightInProgress:
+            return "Overnight window still open. A recommendation appears after you wake, or once the overnight window ends."
+        case .hrvUnavailable:
+            return "No HRV readings in the last \(params.baselineWindowDays) days although heart rate is recorded. Check Health access for Heart Rate Variability."
+        case .calibrating:
+            return "Calibrating: \(c.hrvNights) of \(c.hrvNightsRequired) nights with HRV."
+        case .noOvernightData:
+            return "No overnight HRV or sleeping heart rate for last night."
+        case .degraded:
+            return "Partial data: no \(missing) for last night. Push is disabled."
+        case .provisional:
+            return "Score scale still calibrating (\(c.compositeDays) of \(c.compositeDaysRequired) days). Push is disabled."
+        case .scored:
+            return "Full overnight inputs and calibrated score scale."
+        }
     }
 
     // MARK: - Plan
 
-    func directive(for r: Recovery) -> (Directive, [String]) {
-        var reasons: [String] = []
-        switch r.confidence {
-        case .calibrating:
-            return (.calibrating, ["Building baseline: \(r.baselineDays)/\(params.minBaselineDays) nights with HRV."])
-        case .noData:
-            return (.noData, ["No overnight HRV or sleeping heart rate for last night."])
-        case .low, .medium, .high:
-            break
+    func directive(for r: Recovery) -> (Directive, [String], [RuleCheck]) {
+        var trace: [RuleCheck] = []
+        func check(_ rule: String, _ passed: Bool, _ detail: String) {
+            trace.append(RuleCheck(rule: rule, passed: passed, detail: detail))
         }
-        guard let s = r.score else { return (.noData, ["No recovery score."]) }
+        check("Score available", r.status.hasScore, "\(r.status.rawValue): \(r.statusDetail)")
+        guard r.status.hasScore, let s = r.score else {
+            let d: Directive
+            switch r.status {
+            case .nightInProgress: d = .pending
+            case .calibrating: d = .calibrating
+            case .hrvUnavailable, .noOvernightData, .degraded, .provisional, .scored: d = .noData
+            }
+            return (d, [r.statusDetail], trace)
+        }
+        func z(_ k: ComponentKind) -> String {
+            r.components.first { $0.kind == k }?.rawZ.map { String(format: "%+.1f", $0) } ?? "n/a"
+        }
+        let vitals = r.flags.contains(.elevatedVitals)
+        check("Elevated overnight vitals -> Rest", vitals,
+              String(format: "needs sleeping HR z >= %.1f and temp or resp z >= %.1f; ", params.elevatedVitalsZ, params.elevatedVitalsZ)
+                + "HR \(z(.restingHR)), temp \(z(.wristTemperature)), resp \(z(.respiratoryRate))")
+        if vitals {
+            return (.rest, ["Sleeping heart rate and temperature or respiration are well above your usual range."], trace)
+        }
+        check("Score <= \(params.recoverScore) -> Recover", s <= params.recoverScore, "score \(s)")
+        if s <= params.recoverScore {
+            return (.recover, ["Recovery well below your typical day."], trace)
+        }
         let trendLow = r.flags.contains(.hrvTrendLow)
         let debt = r.flags.contains(.sleepDebt)
-
-        if r.flags.contains(.illnessWatch) {
-            return (.rest, ["Sleeping HR and temperature/respiration both elevated (>= +2 SD)."])
-        }
-        if s <= params.recoverScore {
-            return (.recover, ["Recovery well below your typical day."])
+        let confirmed = s <= params.depletedThreshold && (trendLow || debt)
+        check("Score <= \(params.depletedThreshold) confirmed by HRV trend or sleep debt -> Recover", confirmed,
+              "score \(s); HRV trend low: \(trendLow); sleep debt: \(debt)")
+        if confirmed {
+            return (.recover, [trendLow ? "Low day confirmed by 7-day HRV trend." : "Low day confirmed by sleep debt."], trace)
         }
         if s <= params.depletedThreshold {
-            if trendLow || debt {
-                reasons.append(trendLow ? "Low day confirmed by 7-day HRV trend." : "Low day confirmed by sleep debt.")
-                return (.recover, reasons)
-            }
-            return (.maintain, ["Below-typical day without trend confirmation: train as planned, cap intensity."])
+            return (.maintain, ["Below-typical day without trend confirmation: train as planned, cap intensity."], trace)
         }
-        guard s >= params.primedThreshold else { return (.maintain, reasons) }
+        check("Score >= \(params.primedThreshold) -> Push candidate", s >= params.primedThreshold, "score \(s)")
+        guard s >= params.primedThreshold else { return (.maintain, [], trace) }
 
         // Asymmetric loss: training hard while fatigued costs more than an easy
         // day while fresh, so weak or conflicting evidence demotes "push".
-        if r.confidence == .low { return (.maintain, ["Push demoted: low data confidence."]) }
-        if trendLow { return (.maintain, ["Push demoted: 7-day HRV trend below normal range."]) }
-        if r.flags.contains(.loadSpike) { return (.maintain, ["Push demoted: acute load spike."]) }
-        if debt { return (.maintain, ["Push demoted: sleep debt."]) }
-        return (.push, reasons)
+        let spike = r.flags.contains(.loadSpike)
+        let demotions: [(String, Bool, String, String)] = [
+            ("Push needs full inputs and calibrated scale", r.status == .scored, r.status.rawValue,
+             "Push demoted: \(r.statusDetail)"),
+            ("Push needs confidence above low", r.confidence != .low, r.confidence.rawValue,
+             "Push demoted: low data confidence."),
+            ("Push blocked by low HRV trend", !trendLow, "HRV trend low: \(trendLow)",
+             "Push demoted: 7-day HRV trend below normal range."),
+            ("Push blocked by load spike", !spike, "load spike: \(spike)", "Push demoted: acute load spike."),
+            ("Push blocked by sleep debt", !debt, "sleep debt: \(debt)", "Push demoted: sleep debt."),
+        ]
+        for (rule, ok, detail, reason) in demotions {
+            check(rule, ok, detail)
+            if !ok { return (.maintain, [reason], trace) }
+        }
+        return (.push, [], trace)
     }
 
     func plan(recovery r: Recovery) -> Plan {
-        let (action, initialReasons) = directive(for: r)
+        let (action, initialReasons, trace) = directive(for: r)
         var reasons = initialReasons
         var low: Double?, high: Double?, ceiling: Double?
         if let lp = eligibleCTL(throughIndex: loadPoints.count - 1) {
@@ -341,7 +484,7 @@ public struct Engine {
             case .maintain: band = (0.6, 1.0)
             case .recover: band = (0, 0.5)
             case .rest: band = (0, 0.3)
-            case .calibrating, .noData: band = nil
+            case .calibrating, .noData, .pending: band = nil
             }
             if let b = band {
                 let (lo, hi) = b
@@ -356,7 +499,116 @@ public struct Engine {
         } else {
             reasons.append("Load targets need \(params.minLoadHistoryDays) days of history.")
         }
-        return Plan(directive: action, targetLow: low, targetHigh: high, ceiling: ceiling, reasons: reasons)
+        return Plan(directive: action, targetLow: low, targetHigh: high, ceiling: ceiling, reasons: reasons, trace: trace)
+    }
+
+    // MARK: - Audit
+
+    func audit(todayRecovery: Recovery, todayDirective: Directive) -> BriefAudit {
+        let i = todayIndex
+        let windowStart = max(0, i - params.baselineWindowDays + 1)
+        let windowDays = Array(days[windowStart...i])
+        let last7 = Array(days[max(0, i - 6)...i])
+
+        func hasData(_ r: DayRecord?, _ input: HealthInput) -> Bool {
+            (r?.ingestion[input].accepted ?? 0) > 0
+        }
+        let inputs: [InputAvailability] = HealthInput.allCases.map { input in
+            var acc = 0, dup = 0, imp = 0, fut = 0
+            var earliest: Date?, latest: Date?
+            for d in windowDays {
+                guard let st = records[d]?.ingestion[input] else { continue }
+                acc += st.accepted
+                dup += st.duplicates
+                imp += st.implausible
+                fut += st.future
+                if let e = st.earliest { earliest = min(earliest ?? e, e) }
+                if let l = st.latest { latest = max(latest ?? l, l) }
+            }
+            return InputAvailability(
+                input: input,
+                daysWithDataLast7: last7.filter { hasData(records[$0], input) }.count,
+                daysWithDataInWindow: windowDays.filter { hasData(records[$0], input) }.count,
+                windowDays: windowDays.count, accepted: acc, duplicates: dup, implausible: imp, future: fut,
+                earliestSample: earliest, latestSample: latest)
+        }
+
+        let w7 = last7.compactMap { records[$0]?.workouts }
+        let w28 = days[max(0, i - 27)...i].compactMap { records[$0]?.workouts }
+        let coverages = w7.compactMap(\.heartRateCoverage)
+        let latestWorkout = days.compactMap { records[$0]?.workouts.latestEnd }.max()
+        var zones: [String] = []
+        for z in days.suffix(14).compactMap({ records[$0]?.windows?.timeZoneID }) where !zones.contains(z) {
+            zones.append(z)
+        }
+
+        return BriefAudit(
+            asOf: asOf,
+            recordCount: records.count,
+            earliestRecordDay: records.keys.min(),
+            latestRecordDay: records.keys.max(),
+            inputs: inputs,
+            baselines: rawRecovery(at: i).baselines,
+            thresholds: thresholds(),
+            hrMaxSource: hrMaxSource,
+            hrRestSource: hrRestSource,
+            workoutsLast7: w7.reduce(0) { $0 + $1.started },
+            workoutsLast28: w28.reduce(0) { $0 + $1.started },
+            latestWorkoutEnd: latestWorkout,
+            workoutHRCoverageLast7: Stats.mean(coverages),
+            recentTimeZones: zones,
+            distribution: distribution(from: windowStart, todayRecovery: todayRecovery, todayDirective: todayDirective))
+    }
+
+    func thresholds() -> ThresholdSnapshot {
+        ThresholdSnapshot(
+            primedScore: params.primedThreshold, depletedScore: params.depletedThreshold,
+            recoverScore: params.recoverScore, elevatedVitalsZ: params.elevatedVitalsZ,
+            hrvTrendSWC: params.hrvTrendSWC, loadSpikeACWR: params.loadSpikeACWR,
+            sleepDebtHours: params.sleepDebtFlagHours, minHRVNights: params.minBaselineDays,
+            minCompositeDays: params.minCalibrationDays, baselineWindowDays: params.baselineWindowDays,
+            acwrCeiling: settings.acwrCeiling,
+            weights: [
+                WeightSnapshot(kind: .hrv, weight: params.weightHRV),
+                WeightSnapshot(kind: .restingHR, weight: params.weightRestingHR),
+                WeightSnapshot(kind: .sleep, weight: params.weightSleep),
+                WeightSnapshot(kind: .respiratoryRate, weight: params.weightRespiratory),
+                WeightSnapshot(kind: .wristTemperature, weight: params.weightTemperature),
+            ])
+    }
+
+    /// Re-evaluates the rule chain for every day in the window with the same
+    /// functions that produce today's recommendation. Nothing here feeds back
+    /// into thresholds.
+    func distribution(from start: Int, todayRecovery: Recovery, todayDirective: Directive) -> DecisionDistribution {
+        var directiveCounts = Array(repeating: 0, count: Directive.allCases.count)
+        var statusCounts = Array(repeating: 0, count: ScoreStatus.allCases.count)
+        var histogram = Array(repeating: 0, count: 10)
+        var scores: [Double] = []
+        var zs: [ComponentKind: [Double]] = [:]
+        for k in start...todayIndex {
+            let r = k == todayIndex ? todayRecovery : recovery(at: k)
+            let d = k == todayIndex ? todayDirective : directive(for: r).0
+            directiveCounts[Directive.allCases.firstIndex(of: d)!] += 1
+            statusCounts[ScoreStatus.allCases.firstIndex(of: r.status)!] += 1
+            if let s = r.score {
+                histogram[min(s / 10, 9)] += 1
+                scores.append(Double(s))
+                for c in r.components { zs[c.kind, default: []].append(c.z) }
+            }
+        }
+        return DecisionDistribution(
+            from: days[start], to: days[todayIndex], days: todayIndex - start + 1,
+            directives: zip(Directive.allCases, directiveCounts).map { CountEntry(key: $0.rawValue, count: $1) },
+            statuses: zip(ScoreStatus.allCases, statusCounts).map { CountEntry(key: $0.rawValue, count: $1) },
+            scoreHistogram: histogram,
+            scoreMean: Stats.mean(scores),
+            scoreSD: Stats.standardDeviation(scores),
+            components: ComponentKind.allCases.map { kind in
+                let v = zs[kind] ?? []
+                return ComponentStats(kind: kind, n: v.count, mean: Stats.mean(v), sd: Stats.standardDeviation(v),
+                                      min: v.min(), max: v.max())
+            })
     }
 
     // MARK: - Brief
@@ -371,7 +623,8 @@ public struct Engine {
         return out
     }
 
-    public func brief(journal: [Day: Set<String>] = [:], historyDays: Int = 14, generatedAt: Date = Date()) -> DailyBrief {
+    public func brief(journal: [Day: Set<String>] = [:], historyDays: Int = 14, generatedAt: Date = Date(),
+                      dataSyncedAt: Date? = nil) -> DailyBrief {
         let i = todayIndex
         let rec = recovery(at: i)
         let todayRecord = records[today]
@@ -399,24 +652,27 @@ public struct Engine {
                 l = loadPoints[k].observed ? loadPoints[k].load : nil
             }
             return HistoryPoint(day: d,
-                                recoveryScore: recovery(at: k).score,
+                                recoveryScore: k == i ? rec.score : recovery(at: k).score,
                                 load: l,
                                 hrvMs: records[d]?.lnHRV.map(exp),
                                 ctl: k < loadPoints.count ? loadPoints[k].ctl : last?.ctl)
         }
 
+        let plan = plan(recovery: rec)
         return DailyBrief(
             day: today,
             generatedAt: generatedAt,
             recovery: rec,
             sleep: sleepSummary(at: i),
             load: load,
-            plan: plan(recovery: rec),
+            plan: plan,
             history: history,
             tagImpacts: TagAnalysis.impacts(journal: journal, hrvDeviation: hrvDeviations(),
                                             calendar: calendar, params: params),
             hrMaxUsed: hrMax,
-            hrRestUsed: hrRest
+            hrRestUsed: hrRest,
+            dataSyncedAt: dataSyncedAt,
+            audit: audit(todayRecovery: rec, todayDirective: plan.directive)
         )
     }
 }

@@ -16,6 +16,8 @@ final class HealthService {
     private static let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!
     private static let bpm = HKUnit.count().unitDivided(by: .minute())
 
+    /// Every type Margin reads. Adding a type here makes the request status
+    /// `.shouldRequest` again, so existing installs are re-prompted.
     var readTypes: Set<HKObjectType> {
         [
             Self.quantity(.heartRate),
@@ -24,9 +26,21 @@ final class HealthService {
             Self.quantity(.respiratoryRate),
             Self.quantity(.appleSleepingWristTemperature),
             Self.sleepType,
+            HKObjectType.workoutType(),
             HKObjectType.characteristicType(forIdentifier: .dateOfBirth)!,
             HKObjectType.characteristicType(forIdentifier: .biologicalSex)!,
         ]
+    }
+
+    /// Whether the permission sheet still needs to be shown. HealthKit never
+    /// reveals whether *read* access was granted: a denied type simply returns
+    /// no samples. Diagnostics therefore report data actually seen per type.
+    func requestStatus() async -> HKAuthorizationRequestStatus {
+        await withCheckedContinuation { cont in
+            store.getRequestStatusForAuthorization(toShare: [], read: readTypes) { status, _ in
+                cont.resume(returning: status)
+            }
+        }
     }
 
     func requestAuthorization() async throws {
@@ -89,15 +103,31 @@ final class HealthService {
         try await values(.appleSleepingWristTemperature, unit: .degreeCelsius(), in: interval)
     }
 
-    func sleep(in interval: DateInterval) async throws -> [SleepSegment] {
+    func workouts(in interval: DateInterval) async throws -> [WorkoutSample] {
+        let predicate = HKQuery.predicateForSamples(withStart: interval.start, end: interval.end, options: [])
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.workout(predicate)],
+            sortDescriptors: [SortDescriptor(\.startDate)]
+        )
+        return try await descriptor.result(for: store).map {
+            WorkoutSample(start: $0.startDate, end: $0.endDate, activityType: $0.workoutActivityType.rawValue)
+        }
+    }
+
+    /// Returns segments plus the number of samples with an unrecognised sleep value (skipped, and logged).
+    func sleep(in interval: DateInterval) async throws -> (segments: [SleepSegment], unknownValues: Int) {
         let predicate = HKQuery.predicateForSamples(withStart: interval.start, end: interval.end, options: [])
         let descriptor = HKSampleQueryDescriptor(
             predicates: [.categorySample(type: Self.sleepType, predicate: predicate)],
             sortDescriptors: [SortDescriptor(\.startDate)]
         )
         let samples = try await descriptor.result(for: store)
-        return samples.compactMap { sample in
-            guard let value = HKCategoryValueSleepAnalysis(rawValue: sample.value) else { return nil }
+        var unknown = 0
+        let segments: [SleepSegment] = samples.compactMap { sample in
+            guard let value = HKCategoryValueSleepAnalysis(rawValue: sample.value) else {
+                unknown += 1
+                return nil
+            }
             let stage: SleepStage
             switch value {
             case .inBed: stage = .inBed
@@ -106,12 +136,26 @@ final class HealthService {
             case .asleepDeep: stage = .deep
             case .asleepREM: stage = .rem
             case .asleepUnspecified: stage = .asleepUnspecified
-            @unknown default: return nil
+            @unknown default:
+                unknown += 1
+                return nil
             }
             // Apple Watch sources win over iPhone or third-party sleep data.
             let isWatch = sample.sourceRevision.productType?.hasPrefix("Watch") == true
             return SleepSegment(start: sample.startDate, end: sample.endDate, stage: stage,
                                 sourcePriority: isWatch ? 2 : 1)
+        }
+        return (segments, unknown)
+    }
+}
+
+extension HKAuthorizationRequestStatus {
+    var label: String {
+        switch self {
+        case .shouldRequest: return "shouldRequest"
+        case .unnecessary: return "unnecessary (prompt answered)"
+        case .unknown: return "unknown"
+        @unknown default: return "unrecognised"
         }
     }
 }
