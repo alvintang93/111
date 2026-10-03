@@ -21,6 +21,7 @@ extension Directive {
         case .rest: return "REST"
         case .calibrating: return "CALIBRATING"
         case .noData: return "NO DATA"
+        case .pending: return "PENDING"
         }
     }
 
@@ -30,7 +31,7 @@ extension Directive {
         case .maintain: return .yellow
         case .recover: return .orange
         case .rest: return .red
-        case .calibrating, .noData: return .gray
+        case .calibrating, .noData, .pending: return .gray
         }
     }
 
@@ -42,6 +43,7 @@ extension Directive {
         case .rest: return "bed.double.fill"
         case .calibrating: return "hourglass"
         case .noData: return "questionmark"
+        case .pending: return "moon.zzz"
         }
     }
 }
@@ -83,7 +85,7 @@ extension ComponentKind {
 extension Flag {
     var title: String {
         switch self {
-        case .illnessWatch: return "Illness watch"
+        case .elevatedVitals: return "Overnight vitals above usual"
         case .hrvTrendLow: return "HRV trend low"
         case .loadSpike: return "Load spike"
         case .sleepDebt: return "Sleep debt"
@@ -92,7 +94,7 @@ extension Flag {
 
     var symbol: String {
         switch self {
-        case .illnessWatch: return "thermometer.medium"
+        case .elevatedVitals: return "thermometer.medium"
         case .hrvTrendLow: return "waveform.path.ecg"
         case .loadSpike: return "chart.line.uptrend.xyaxis"
         case .sleepDebt: return "moon.zzz"
@@ -116,6 +118,29 @@ enum Fmt {
 
     static func signed(_ v: Double?, digits: Int = 1) -> String {
         v.map { String(format: "%+.\(digits)f", $0) } ?? "–"
+    }
+}
+
+extension ScoreStatus {
+    var label: String {
+        switch self {
+        case .nightInProgress: return "Night in progress"
+        case .hrvUnavailable: return "HRV unavailable"
+        case .calibrating: return "Calibrating"
+        case .noOvernightData: return "No overnight data"
+        case .degraded: return "Partial data"
+        case .provisional: return "Provisional scale"
+        case .scored: return "Scored"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .scored: return .green
+        case .provisional, .degraded: return .yellow
+        case .nightInProgress, .calibrating: return .gray
+        case .hrvUnavailable, .noOvernightData: return .orange
+        }
     }
 }
 

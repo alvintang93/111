@@ -8,6 +8,7 @@ struct MoreView: View {
             NavigationLink { InsightsView() } label: { Label("Insights", systemImage: "chart.bar.xaxis") }
             NavigationLink { SettingsView() } label: { Label("Settings", systemImage: "gearshape") }
             NavigationLink { AboutView() } label: { Label("How it works", systemImage: "info.circle") }
+            NavigationLink { DiagnosticsView() } label: { Label("Developer diagnostics", systemImage: "wrench.and.screwdriver") }
         }
         .navigationTitle("More")
     }
@@ -112,7 +113,7 @@ struct SettingsView: View {
                 Stepper(String(format: "Base need %.2fh", model.settings.baseSleepNeedHours),
                         value: $model.settings.baseSleepNeedHours, in: 6...10, step: 0.25)
             }
-            Section("Risk limit") {
+            Section("Load-change limit") {
                 Stepper(String(format: "ACWR ceiling %.2f", model.settings.acwrCeiling),
                         value: $model.settings.acwrCeiling, in: 1.1...1.6, step: 0.05)
             }
@@ -136,16 +137,21 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Group {
                     Text("Recovery").font(.headline)
-                    Text("Overnight HRV (ln SDNN), sleeping HR, sleep vs need, respiration and wrist temperature are each scored against your own 60-day median/MAD baseline. The weighted composite is then compared with your own recent days, so 50 = a typical day for you.")
-                    Text("Directive").font(.headline)
-                    Text("Recover needs a bottom-15% day, or a bottom-third day confirmed by a low 7-day HRV trend or sleep debt. Push is demoted on weak or conflicting evidence. Rest requires sleeping HR AND temperature or respiration ≥ +2 SD.")
+                    Text("Overnight HRV (ln SDNN), sleeping HR, sleep vs need, respiration and wrist temperature are each compared with your own 60-day median/MAD baseline. The weighted composite is then compared with your own recent days, so 50 = a typical day for you.")
+                    Text("When there is no score").font(.headline)
+                    Text("No number is shown while calibrating (fewer than 14 nights with HRV), while the night is still in progress, or when last night's HRV and sleeping HR are both missing. With one of them missing the score is marked Partial and Push is disabled.")
+                    Text("Recommendation").font(.headline)
+                    Text("Recover needs a bottom-15% day, or a bottom-third day confirmed by a low 7-day HRV trend or sleep debt. Push needs full inputs, a calibrated scale and no conflicting signal. Rest is suggested when sleeping HR and temperature or respiration are both at least 2 SD above your usual range.")
                     Text("Load").font(.headline)
-                    Text("Banister TRIMP from heart-rate reserve. ATL = 7-day and CTL = 42-day exponential averages. The ceiling is the most load today that keeps ATL/CTL under your limit.")
-                    Text("Limits").font(.headline)
-                    Text("Wellness tool, not a medical device. Thresholds are heuristics, validated on simulated data only.")
+                    Text("Banister TRIMP from heart-rate reserve. ATL = 7-day and CTL = 42-day exponential averages. The ceiling is the most load today that keeps ATL/CTL under your chosen limit.")
+                }
+                Group {
+                    Text("What this is not").font(.headline)
+                    Text("A training aid based on available sensor readings. It does not detect or assess any health condition. Push does not mean a workout is right for you, and Recover or Rest does not mean you are unwell. Thresholds are heuristics validated on simulated data only. Not a medical device.")
                 }
                 .font(.caption2)
             }
+            .font(.caption2)
             .padding(.horizontal, 4)
         }
         .navigationTitle("How it works")

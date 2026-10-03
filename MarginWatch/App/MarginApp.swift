@@ -13,7 +13,11 @@ struct MarginApp: App {
                 .environmentObject(model)
                 .task { await model.onLaunch() }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { Task { await model.refresh() } }
+                    if phase == .active {
+                        Task { await model.onBecameActive() }
+                    } else if phase == .background {
+                        BackgroundRefresh.schedule()
+                    }
                 }
         }
     }
@@ -28,7 +32,7 @@ final class AppDelegate: NSObject, WKApplicationDelegate {
         for task in backgroundTasks {
             if let refresh = task as? WKApplicationRefreshBackgroundTask {
                 Task { @MainActor in
-                    await AppModel.shared.refresh()
+                    await AppModel.shared.backgroundRefresh()
                     BackgroundRefresh.schedule()
                     refresh.setTaskCompletedWithSnapshot(false)
                 }
@@ -41,11 +45,14 @@ final class AppDelegate: NSObject, WKApplicationDelegate {
 
 enum BackgroundRefresh {
     /// The preferred date is a request: watchOS budgets background refreshes
-    /// and may run them later or less often.
+    /// and may run them later, less often, or not at all. Requests and actual
+    /// executions are recorded separately in diagnostics.
     static func schedule(after interval: TimeInterval = 45 * 60) {
-        WKApplication.shared().scheduleBackgroundRefresh(
-            withPreferredDate: Date().addingTimeInterval(interval),
-            userInfo: nil
-        ) { _ in }
+        let preferred = Date().addingTimeInterval(interval)
+        WKApplication.shared().scheduleBackgroundRefresh(withPreferredDate: preferred, userInfo: nil) { error in
+            Task { @MainActor in
+                AppModel.shared.recordBackgroundRequest(preferred: preferred, error: error)
+            }
+        }
     }
 }
