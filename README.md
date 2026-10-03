@@ -20,9 +20,9 @@ Complications ─ circular, corner, rectangular, inline (Smart Stack too)
 | | Margin |
 |---|---|
 | Transparency | Every input, baseline, z-score and weight is on the Drivers page. The full spec is in [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). |
-| Error control | Type I and type II rates are measured in tests: 18.6% false "recover", 0.14% false illness alarm, 20/20 detection of a real drop. Without enough data the app shows *Calibrating* or *No data*, never a number. |
-| Risk limit | A load **ceiling**, solved in closed form, keeps ATL/CTL under your chosen limit (default 1.3). |
-| Evidence rules | "Recover" needs a strong signal or two that agree. "Push" is demoted on weak or conflicting evidence. Illness needs elevated HR **and** elevated temperature or respiration. |
+| Error control | Type I and type II rates are measured in tests: 18.6% false "recover", 0.14% false "rest", 20/20 detection of a real drop. Without enough data the app shows an explicit status (*Calibrating*, *No overnight data*, *HRV unavailable*, *Night in progress*), never a number. |
+| Load-change limit | A load **ceiling**, solved in closed form, keeps ATL/CTL under your chosen limit (default 1.3). |
+| Evidence rules | "Recover" needs a strong signal or two that agree. "Push" needs full inputs and a calibrated scale. "Rest" needs elevated sleeping HR **and** elevated temperature or respiration. |
 | Journal statistics | Welch's t-test with Holm–Bonferroni across tags. Days you didn't journal are excluded, not counted as "no". |
 | Privacy | No account, no server, no subscription. Everything is computed on the watch. |
 | Ultra 2 | Double tap triggers Refresh on watchOS 11+. Complications are tuned for the large display. |
@@ -33,12 +33,14 @@ I have not benchmarked against Bevel, whose algorithms are proprietary, so
 ## Repository layout
 
 ```
-MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 50 unit tests.
+MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 88 unit tests.
 MarginWatch/App/   SwiftUI watch app: HealthKit adapter, cache, model, views
 MarginWatch/Widgets/  WidgetKit complications
 MarginWatch/Shared/   Code shared by app and complications
 project.yml        XcodeGen spec (the .xcodeproj is generated, not committed)
 docs/METHODOLOGY.md   Formulas, thresholds, measured error rates, limitations
+docs/PIPELINE_AUDIT.md   Data flow and every silent-failure point, with its handling
+docs/DEVICE_VALIDATION.md   Checklist to validate the app on an Apple Watch Ultra 2
 ```
 
 ## Install on your watch
@@ -71,7 +73,8 @@ Groups isn't available for your team, you need the paid Apple Developer Program.
 ## Verify it yourself
 
 ```bash
-swift test --package-path MarginCore    # 50 tests, macOS or Linux
+swift test --package-path MarginCore    # 88 tests, macOS or Linux
+python3 scripts/check_product_language.py
 ```
 
 CI (`.github/workflows/ci.yml`) runs the core tests on Linux and macOS, then
@@ -79,7 +82,9 @@ compiles the watch app and complications for the watchOS simulator.
 
 ## Limitations
 
-See [`docs/METHODOLOGY.md` §10](docs/METHODOLOGY.md#10-where-this-can-be-wrong).
+See [`docs/METHODOLOGY.md` §11](docs/METHODOLOGY.md#11-where-this-can-be-wrong).
+Real-device behaviour (HealthKit permissions, background refresh, complication
+updates) is **not yet validated**. Follow [`docs/DEVICE_VALIDATION.md`](docs/DEVICE_VALIDATION.md).
 In short:
 - The thresholds are heuristics, validated on simulated data only.
 - Apple provides SDNN, not RMSSD.

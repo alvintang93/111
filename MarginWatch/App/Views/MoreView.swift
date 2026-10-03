@@ -123,7 +123,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
-        .confirmationDialog("Re-read up to \(AppModel.historyDays) days from Health?", isPresented: $confirmRebuild) {
+        .confirmationDialog("Re-read up to \(model.syncParams.historyDays) days from Health?", isPresented: $confirmRebuild) {
             Button("Rebuild") { Task { await model.rebuildHistory() } }
         }
     }

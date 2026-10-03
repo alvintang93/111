@@ -16,6 +16,14 @@ jobs:
       - name: Test MarginCore
         run: swift test --package-path MarginCore
 
+  product-language:
+    name: Product language check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No diagnosis / illness / safety claims in user-facing strings
+        run: python3 scripts/check_product_language.py
+
   watch-build:
     name: watchOS build (macOS)
     runs-on: macos-15
@@ -41,6 +49,9 @@ jobs:
             -destination 'generic/platform=watchOS Simulator' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO | tee xcodebuild.log
+      - name: Compiler errors (on failure)
+        if: failure()
+        run: grep -E "error:" xcodebuild.log | sort -u | head -100 || true
       - name: Compiler warnings in project sources
         run: |
           grep -E "/(MarginWatch|MarginCore)/[^:]+:[0-9]+:[0-9]+: warning:" xcodebuild.log | sort -u > warnings.txt || true

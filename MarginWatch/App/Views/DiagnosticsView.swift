@@ -30,7 +30,7 @@ struct DiagnosticsView: View {
                 Button("Reload widget heartbeat") { model.refreshHeartbeat() }
             }
         }
-        .navigationTitle("Diagnostics")
+        .navigationTitle("Developer diagnostics")
         .onAppear { model.refreshHeartbeat() }
     }
 
