@@ -63,7 +63,8 @@ public struct ModelParameters: Sendable, Equatable {
     public var compositeScaleFloor = 0.05
 
     // Flags
-    public var illnessZ = 2.0
+    /// Elevated-overnight-vitals threshold (sleeping HR and temp or respiration).
+    public var elevatedVitalsZ = 2.0
     public var hrvTrendDays = 7
     public var hrvTrendMinDays = 4
     /// Smallest-worthwhile-change band: baseline +/- this many robust SDs.
@@ -97,6 +98,12 @@ public struct ModelParameters: Sendable, Equatable {
     // Journal impact
     public var minTagSamples = 5
     public var tagAlpha = 0.05
+
+    // Data hygiene
+    public var plausibility = PlausibilityLimits()
+    /// Today's overnight window counts as closed this long after the main sleep
+    /// bout ends (or at the end of the fallback overnight window, whichever is first).
+    public var overnightSettleTime: TimeInterval = 30 * 60
 
     public init() {}
 
