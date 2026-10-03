@@ -8,7 +8,9 @@ struct MoreView: View {
             NavigationLink { InsightsView() } label: { Label("Insights", systemImage: "chart.bar.xaxis") }
             NavigationLink { SettingsView() } label: { Label("Settings", systemImage: "gearshape") }
             NavigationLink { AboutView() } label: { Label("How it works", systemImage: "info.circle") }
+            #if DEBUG
             NavigationLink { DiagnosticsView() } label: { Label("Developer diagnostics", systemImage: "wrench.and.screwdriver") }
+            #endif
         }
         .navigationTitle("More")
     }

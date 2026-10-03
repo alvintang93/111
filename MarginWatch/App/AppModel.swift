@@ -65,13 +65,30 @@ final class AppModel: ObservableObject {
         settings = prefs.loadSettings()
         journal = prefs.loadJournal()
         runtime = prefs.loadRuntime()
-        let loadedLog = eventStore.load() ?? EventLog(capacity: 300)
+        var discardedLogs: [String] = []
+        let loadedLog: EventLog
+        switch eventStore.load() {
+        case .loaded(let l): loadedLog = l
+        case .empty: loadedLog = EventLog(capacity: 300)
+        case .discarded(let why):
+            loadedLog = EventLog(capacity: 300)
+            discardedLogs.append("event log unreadable (\(why)); started a new one")
+        }
         eventLog = loadedLog
         events = loadedLog.events
-        decisionLog = decisionStore.load() ?? DecisionLog(retentionDays: 180)
+        switch decisionStore.load() {
+        case .loaded(let l): decisionLog = l
+        case .empty: decisionLog = DecisionLog(retentionDays: 180)
+        case .discarded(let why):
+            decisionLog = DecisionLog(retentionDays: 180)
+            discardedLogs.append("decision log unreadable (\(why)); started a new one")
+        }
         widgetHeartbeat = SharedStore.loadHeartbeat()
         let (loaded, outcome) = recordStore.load()
         records = loaded
+        for message in discardedLogs {
+            log(.persist, .warning, message)
+        }
         switch outcome {
         case .loaded(let count, let savedAt):
             log(.persist, .info, "cache loaded: \(count) day(s), saved \(savedAt.formatted(date: .abbreviated, time: .shortened))")

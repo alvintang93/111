@@ -85,9 +85,20 @@ final class JSONFileStore<T: Codable> {
         url = appSupportURL(fileName)
     }
 
-    func load() -> T? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(T.self, from: data)
+    enum LoadOutcome {
+        case loaded(T)
+        case empty
+        case discarded(reason: String)
+    }
+
+    func load() -> LoadOutcome {
+        guard FileManager.default.fileExists(atPath: url.path) else { return .empty }
+        do {
+            let data = try Data(contentsOf: url)
+            return .loaded(try JSONDecoder().decode(T.self, from: data))
+        } catch {
+            return .discarded(reason: String(describing: error))
+        }
     }
 
     func save(_ value: T) throws {

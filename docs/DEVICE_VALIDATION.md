@@ -6,7 +6,7 @@ repository has been run on a physical watch yet: everything below is
 **unverified until you complete it**.
 
 Where to look:
-- **Developer diagnostics**: the More page (scroll down on the watch) → *Developer diagnostics*. Everything it shows comes from the same state the score uses.
+- **Developer diagnostics**: the More page (scroll down on the watch) → *Developer diagnostics*. Everything it shows comes from the same state the score uses. It exists only in Debug builds (run from Xcode); Release and TestFlight builds hide it.
 - **Events**: the bottom of Developer diagnostics (newest first; the last 300 are kept on the watch).
 - **Xcode console**: while the app runs from Xcode, every event is also logged through `os.Logger` with category `pipeline`.
 
