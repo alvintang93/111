@@ -40,7 +40,12 @@ jobs:
             -configuration Debug \
             -destination 'generic/platform=watchOS Simulator' \
             -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO | tee xcodebuild.log
+      - name: Compiler warnings in project sources
+        run: |
+          grep -E "/(MarginWatch|MarginCore)/[^:]+:[0-9]+:[0-9]+: warning:" xcodebuild.log | sort -u > warnings.txt || true
+          echo "$(wc -l < warnings.txt | tr -d ' ') unique warning(s) in project sources"
+          cat warnings.txt
       - name: Inspect built bundle
         run: |
           APP=$(find build/Build/Products -maxdepth 2 -name 'Margin.app' -type d | head -1)
