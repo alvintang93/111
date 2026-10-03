@@ -160,10 +160,12 @@ public struct Engine {
         let zc = params.zClamp
 
         var comps: [Component] = []
-        var rawWeights: [ComponentKind: Double] = [:]
+        // Array, not Dictionary: floating-point sums must run in a fixed order
+        // (Dictionary iteration order is seeded per instance).
+        var rawWeights: [Double] = []
         func add(_ kind: ComponentKind, value: Double, baseline: Double?, z: Double, rawZ: Double?, weight: Double) {
             comps.append(Component(kind: kind, value: value, baseline: baseline, z: z, rawZ: rawZ, weight: 0))
-            rawWeights[kind] = weight
+            rawWeights.append(weight)
         }
 
         var rhrRaw: Double?, rrRaw: Double?, tempRaw: Double?
@@ -199,9 +201,9 @@ public struct Engine {
                 weight: params.weightTemperature)
         }
 
-        let totalWeight = rawWeights.values.reduce(0, +)
+        let totalWeight = rawWeights.reduce(0, +)
         for k in comps.indices {
-            comps[k].weight = totalWeight > 0 ? rawWeights[comps[k].kind]! / totalWeight : 0
+            comps[k].weight = totalWeight > 0 ? rawWeights[k] / totalWeight : 0
         }
 
         let has = Set(comps.map(\.kind))

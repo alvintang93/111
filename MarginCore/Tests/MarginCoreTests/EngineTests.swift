@@ -137,6 +137,23 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode([DayRecord].self, from: recData), records)
     }
 
+    func testWeightsAreSummedInFixedOrder() {
+        // Regression: summing weights in Dictionary order produced 0.45 or
+        // 0.45000000000000007 depending on the instance's hash seed.
+        let brief = engine(syntheticHistory(today: today, count: 90)).brief(generatedAt: fixedNow)
+        let p = ModelParameters.standard
+        let total = [p.weightHRV, p.weightRestingHR, p.weightSleep, p.weightRespiratory, p.weightTemperature]
+            .reduce(0, +)
+        let expected: [ComponentKind: Double] = [
+            .hrv: p.weightHRV / total, .restingHR: p.weightRestingHR / total, .sleep: p.weightSleep / total,
+            .respiratoryRate: p.weightRespiratory / total, .wristTemperature: p.weightTemperature / total,
+        ]
+        XCTAssertEqual(brief.recovery.components.map(\.kind), [.hrv, .restingHR, .sleep, .respiratoryRate, .wristTemperature])
+        for c in brief.recovery.components {
+            XCTAssertEqual(c.weight, expected[c.kind]!, "bit-exact weight for \(c.kind)")
+        }
+    }
+
     func testNoLookAhead() {
         // A wild future record must not change today's brief.
         let records = syntheticHistory(today: today, count: 90)

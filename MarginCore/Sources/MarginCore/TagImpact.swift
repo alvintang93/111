@@ -47,9 +47,10 @@ public enum TagAnalysis {
         var candidates: [(tag: String, nWith: Int, nWithout: Int, result: WelchResult)] = []
         for tag in allTags {
             var with: [Double] = [], without: [Double] = []
-            for (day, tags) in journal {
+            // Sorted so sums (and thus p-values) are bit-for-bit reproducible.
+            for day in journal.keys.sorted() {
                 guard let dev = hrvDeviation[day.adding(1, calendar: calendar)] else { continue }
-                if tags.contains(tag) { with.append(dev) } else { without.append(dev) }
+                if journal[day]!.contains(tag) { with.append(dev) } else { without.append(dev) }
             }
             guard with.count >= params.minTagSamples, without.count >= params.minTagSamples,
                   let r = Hypothesis.welch(with, without) else { continue }
@@ -61,6 +62,6 @@ public enum TagAnalysis {
                       effectPercent: (exp(c.result.meanDifference) - 1) * 100,
                       pValue: c.result.p, significant: sig)
         }
-        .sorted { $0.pValue < $1.pValue }
+        .sorted { ($0.pValue, $0.tag) < ($1.pValue, $1.tag) }
     }
 }

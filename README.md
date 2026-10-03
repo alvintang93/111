@@ -33,7 +33,7 @@ I have not benchmarked against Bevel, whose algorithms are proprietary, so
 ## Repository layout
 
 ```
-MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 49 unit tests.
+MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 50 unit tests.
 MarginWatch/App/   SwiftUI watch app: HealthKit adapter, cache, model, views
 MarginWatch/Widgets/  WidgetKit complications
 MarginWatch/Shared/   Code shared by app and complications
@@ -71,7 +71,7 @@ Groups isn't available for your team, you need the paid Apple Developer Program.
 ## Verify it yourself
 
 ```bash
-swift test --package-path MarginCore    # 49 tests, macOS or Linux
+swift test --package-path MarginCore    # 50 tests, macOS or Linux
 ```
 
 CI (`.github/workflows/ci.yml`) runs the core tests on Linux and macOS, then
