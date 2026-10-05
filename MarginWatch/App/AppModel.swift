@@ -60,7 +60,11 @@ final class AppModel: ObservableObject {
     /// Latest body mass from Health (fluid target), unless overridden in settings.
     @Published private(set) var healthBodyMassKg: Double?
     @Published private(set) var biomarkers: BiomarkerInput
+    @Published private(set) var strength: StrengthLog
+    /// The session currently being logged (also kept in `strength` once it has sets).
+    @Published private(set) var activeSessionID: UUID?
     let smartAlarm = SmartAlarmManager()
+    lazy var strengthWorkout = StrengthWorkoutManager(store: health.store)
 
     let syncParams = SyncParameters.standard
     /// Logged caffeine and water older than this are dropped.
@@ -73,6 +77,7 @@ final class AppModel: ObservableObject {
     private let decisionStore = JSONFileStore<DecisionLog>(fileName: "decision-log.json")
     private let intakeStore = JSONFileStore<[IntakeEntry]>(fileName: "intake-log.json")
     private let biomarkerStore = JSONFileStore<BiomarkerInput>(fileName: "biomarkers.json")
+    private let strengthStore = JSONFileStore<StrengthLog>(fileName: "strength-log.json")
     let checkIns = CheckInScheduler()
     private var eventLog: EventLog
     private(set) var records: [Day: DayRecord]
@@ -88,6 +93,13 @@ final class AppModel: ObservableObject {
         lifestyle = prefs.loadLifestyle()
         statusPeriods = prefs.loadStatusPeriods()
         var discardedLogs: [String] = []
+        switch strengthStore.load() {
+        case .loaded(let l): strength = l
+        case .empty: strength = StrengthLog()
+        case .discarded(let why):
+            strength = StrengthLog()
+            discardedLogs.append("strength log unreadable (\(why)); started a new one")
+        }
         switch biomarkerStore.load() {
         case .loaded(let b): biomarkers = b
         case .empty: biomarkers = BiomarkerInput()
@@ -433,7 +445,7 @@ final class AppModel: ObservableObject {
         var effective = lifestyle
         if effective.bodyMassKg == nil { effective.bodyMassKg = healthBodyMassKg }
         let b = engine.brief(journal: journal, intake: intake, lifestyle: effective, biomarkers: biomarkers,
-                             generatedAt: now, dataSyncedAt: runtime.lastSuccessfulSync)
+                             strength: strength, generatedAt: now, dataSyncedAt: runtime.lastSuccessfulSync)
         brief = b
         if let error = SharedStore.saveBrief(b) {
             runtime.lastPersistError = "brief: \(error)"
@@ -516,6 +528,79 @@ final class AppModel: ObservableObject {
         log(.query, failures.isEmpty ? .info : .warning,
             "biomarkers: \(counts), nutrition days \(next.nutrition.count), flow days \(next.flow.count), runs \(next.runs.count)"
                 + (failures.isEmpty ? "" : "; failed: \(Set(failures).sorted().joined(separator: ", ")) (previous kept where read failed)"))
+    }
+
+    // MARK: - Strength
+
+    var activeSession: StrengthSession? {
+        activeSessionID.flatMap { id in strength.sessions.first { $0.id == id } }
+    }
+
+    func startStrengthWorkout() async {
+        guard activeSessionID == nil else { return }
+        let session = StrengthSession(start: Date())
+        strength.sessions.append(session)
+        activeSessionID = session.id
+        saveStrength()
+        do {
+            try await strengthWorkout.start()
+            log(.lifecycle, .info, "strength workout started")
+        } catch {
+            // Logging still works without the live session; only Health saving and live HR are lost.
+            log(.lifecycle, .error, "strength workout session could not start: \(error.localizedDescription)")
+        }
+    }
+
+    func logSet(exerciseID: String, weightKg: Double, reps: Int, rpe: Double?, warmup: Bool) {
+        guard let id = activeSessionID, let k = strength.sessions.firstIndex(where: { $0.id == id }) else { return }
+        strength.sessions[k].sets.append(StrengthSet(exerciseID: exerciseID, date: Date(), weightKg: weightKg, reps: reps,
+                                                     rpe: rpe, warmup: warmup))
+        saveStrength()
+        if !warmup { strengthWorkout.startRest(seconds: lifestyle.restSeconds) }
+    }
+
+    func deleteSet(_ setID: UUID) {
+        for k in strength.sessions.indices { strength.sessions[k].sets.removeAll { $0.id == setID } }
+        saveStrength()
+        rescore()
+    }
+
+    /// Ends the active session. Empty sessions are dropped; `save` writes the workout to Health.
+    func endStrengthWorkout(save: Bool) async {
+        guard let id = activeSessionID, let k = strength.sessions.firstIndex(where: { $0.id == id }) else { return }
+        activeSessionID = nil
+        strength.sessions[k].end = Date()
+        let empty = strength.sessions[k].sets.isEmpty
+        do {
+            let workout = try await strengthWorkout.end(save: save && !empty)
+            strength.sessions[k].savedToHealth = workout != nil
+            log(.lifecycle, .info, "strength workout ended: \(strength.sessions[k].sets.count) set(s), \(workout != nil ? "saved to Health" : "not saved")")
+        } catch {
+            log(.lifecycle, .error, "strength workout save failed: \(error.localizedDescription)")
+        }
+        if empty { strength.sessions.remove(at: k) }
+        saveStrength()
+        rescore()
+    }
+
+    func deleteSession(_ id: UUID) {
+        strength.sessions.removeAll { $0.id == id }
+        saveStrength()
+        rescore()
+    }
+
+    func addCustomExercise(name: String, primary: Muscle, secondary: [Muscle], equipment: Equipment) {
+        let id = "custom-\(UUID().uuidString.prefix(8).lowercased())"
+        strength.customExercises.append(Exercise(id, name, equipment, [primary], secondary.filter { $0 != primary }))
+        saveStrength()
+    }
+
+    private func saveStrength() {
+        do {
+            try strengthStore.save(strength)
+        } catch {
+            log(.persist, .error, "strength log save failed: \(error)")
+        }
     }
 
     // MARK: - Caffeine and water

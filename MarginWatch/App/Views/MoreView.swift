@@ -4,6 +4,7 @@ import MarginCore
 struct MoreView: View {
     var body: some View {
         List {
+            NavigationLink { StrengthHomeView() } label: { Label("Strength", systemImage: "figure.strengthtraining.traditional") }
             NavigationLink { DayTimelineView() } label: { Label("Timeline", systemImage: "list.bullet.rectangle") }
             NavigationLink { IntakeView() } label: { Label("Caffeine & water", systemImage: "cup.and.saucer") }
             NavigationLink { StatusView() } label: { Label("Status", systemImage: "flag") }
@@ -125,6 +126,7 @@ struct SettingsView: View {
                 Stepper(String(format: "ACWR ceiling %.2f", model.settings.acwrCeiling),
                         value: $model.settings.acwrCeiling, in: 1.1...1.6, step: 0.05)
             }
+            StrengthSettingsSection()
             Section("Training and sleep") {
                 NavigationLink("Heart-rate zones") { ZonesSettingsView() }
                 NavigationLink("Smart alarm") { SmartAlarmSettingsView(alarm: model.smartAlarm) }

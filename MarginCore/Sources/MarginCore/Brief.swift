@@ -226,6 +226,8 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var cardioFocus: CardioFocusSummary?
     /// Last 30 days of each comparable metric.
     public var series: [MetricSeries]?
+    // Added in engine 2.3.
+    public var strength: StrengthSummary?
 }
 
 public struct BiomarkerSummary: Codable, Sendable, Equatable {

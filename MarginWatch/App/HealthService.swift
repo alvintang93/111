@@ -52,19 +52,25 @@ final class HealthService {
         ]
     }
 
+    /// Written only by the strength builder's live workouts (the workout and the
+    /// heart rate and energy the watch records during it).
+    var shareTypes: Set<HKSampleType> {
+        [HKObjectType.workoutType(), Self.quantity(.heartRate), Self.quantity(.activeEnergyBurned)]
+    }
+
     /// Whether the permission sheet still needs to be shown. HealthKit never
     /// reveals whether *read* access was granted: a denied type simply returns
     /// no samples. Diagnostics therefore report data actually seen per type.
     func requestStatus() async -> HKAuthorizationRequestStatus {
         await withCheckedContinuation { cont in
-            store.getRequestStatusForAuthorization(toShare: [], read: readTypes) { status, _ in
+            store.getRequestStatusForAuthorization(toShare: shareTypes, read: readTypes) { status, _ in
                 cont.resume(returning: status)
             }
         }
     }
 
     func requestAuthorization() async throws {
-        try await store.requestAuthorization(toShare: [], read: readTypes)
+        try await store.requestAuthorization(toShare: shareTypes, read: readTypes)
     }
 
     // MARK: - Characteristics

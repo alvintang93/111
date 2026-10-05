@@ -16,7 +16,9 @@ struct TileGrid: View {
                 NavigationLink {
                     destination(for: m)
                 } label: {
-                    TileView(tile: DashboardTile.make(m, brief: brief, now: Date(), calendar: .current))
+                    TileView(tile: m == .topLift || m == .muscles
+                             ? DashboardTile.makeStrength(m, brief: brief, now: Date(), calendar: .current, unit: model.lifestyle.weightUnit)
+                             : DashboardTile.make(m, brief: brief, now: Date(), calendar: .current))
                 }
                 .buttonStyle(.plain)
             }
@@ -31,6 +33,7 @@ struct TileGrid: View {
         case .sleep: SleepView()
         case .caffeine, .water: IntakeView()
         case .recovery, .hrv, .sleepingHR: DriversView()
+        case .topLift, .muscles: StrengthHomeView()
         }
     }
 }

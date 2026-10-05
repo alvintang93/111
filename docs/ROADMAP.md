@@ -5,7 +5,7 @@ ships as its own pull request, with unit tests in `MarginCore` and the product-l
 still passing. Margin stays a standalone watch app that computes everything on the watch.
 Batch 4 is the exception: it needs an iPhone companion and, for the AI coach, a network service.
 
-Status key: **Have** = already in Margin · **B1–B4** = batch · **Open** = needs a decision first. B1 shipped in PR #3, B2 in PR #4.
+Status key: **Have** = already in Margin · **B1–B4** = batch · **Open** = needs a decision first. B1 shipped in PR #3, B2 in PR #4, B3 in PR #5.
 
 ## Core metrics and readiness
 
@@ -23,7 +23,7 @@ Status key: **Have** = already in Margin · **B1–B4** = batch · **Open** = ne
 | Feature | Status | Notes |
 |---|---|---|
 | Cardio and fitness load | Have | TRIMP, ATL/CTL, form, ACWR, load ceiling, heart-rate-reserve zones |
-| Strength builder | B3 | Exercise library (starts at about 150 movements, not 700), set logging with weight autofill, plate calculator. Saves a strength workout to Health |
+| Strength builder | B3 (done) | 118 built-in movements plus your own, live workout session, set logging with autofill, crown weight entry, rest timer, plate calculator. Saves the workout to Health |
 | Muscle maps and freshness | B3 | Per-muscle volume and recovery time from logged sets |
 | HR recovery after workouts | B1 | Drop at 60 s and 120 s after each workout ends. Also reads Apple's 1-minute recovery when present |
 | Running form metrics | B2 | Cadence, stride length, vertical oscillation, ground contact time and power per run, read from Health |
@@ -73,3 +73,11 @@ projections, blood pressure, glucose and nutrition, all read from Health. Also r
 zones with cardio focus, cycle phase and prediction with HRV and temperature by phase, a compare-two-metrics
 chart, and the smart alarm. Formulas are in `docs/METHODOLOGY.md` §18–§23. Still not done from B2: manual
 blood-pressure logging (needs write access to Health).
+
+## Batch 3 scope (PR #5)
+
+Strength builder (live watchOS workout session saved to Health, 118 exercises plus custom ones, autofill from the
+last set, crown weight entry, RPE and warm-up flags, rest timer, plate calculator in kg or lb), muscle map with
+freshness and ready times, weekly hard sets per muscle, estimated-1RM records, and "Top lift" and "Muscles" tiles.
+Formulas are in `docs/METHODOLOGY.md` §24. Not done: the 700-exercise library (118 now, and custom exercises
+cover the rest) and live sync to an iPhone (needs the batch 4 companion app).

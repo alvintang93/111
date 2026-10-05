@@ -49,7 +49,7 @@ PASS: the app launches on the watch and the console shows `[lifecycle] app launc
 
 **Expected prompts**
 1. A Health access sheet on the watch, listing roughly: Heart Rate, Heart Rate Variability, Resting Heart Rate, Respiratory Rate, Sleeping Wrist Temperature, Sleep, Workouts, Date of Birth, Sex. Exact wording is set by watchOS.
-   **Grant all.** Margin only reads; it writes nothing to Health.
+   **Grant all.** Margin reads these. Since engine 2.3 it also asks to write workouts, heart rate and active energy, used only to save the strength workouts you log.
 2. A notification permission prompt. Allow it; it is used only for the "overnight readings above usual" alert.
 
 **Expected initial UI**
@@ -242,7 +242,7 @@ The day-bucketing logic is covered by deterministic tests, which are the primary
 
 A device check is optional.
 
-Margin only reads Health data and never modifies it. A time-zone change only affects how Margin's own cache splits days.
+Margin never modifies existing Health data (it only adds the strength workouts you log). A time-zone change only affects how Margin's own cache splits days.
 
 1. Pick a day without training plans. Note Diagnostics → Recent days (today's `night` and `day` windows and `tz`).
 2. On the iPhone: Settings → General → Date & Time → turn off *Set Automatically* → choose a city 5+ hours away. The watch follows the iPhone.
@@ -290,6 +290,22 @@ The cache is rebuilt once again (schema 3 → 4). Health asks for VO2 max, blood
 | Cycle | More → Cycle | With periods logged in Health: cycle day, predicted next start, HRV and temperature by phase |
 | Compare | More → Compare | Lines for two metrics and Spearman ρ once 3 days have both values |
 | Smart alarm | Settings → Smart alarm | "Armed for …" after enabling. At the window you get a haptic alarm on movement, or at the wake time. Keep a backup alarm for the first nights |
+
+## 13. STRENGTH (engine 2.3)
+
+Health asks again, this time also for permission to **write** workouts, heart rate and active energy. Allow it if you want strength workouts in Health and your rings. Logging works without it.
+
+| Check | Where | Expected |
+|---|---|---|
+| Start | More → Strength → Start workout | A timer and live heart rate appear within a few seconds. Events: `strength workout started` |
+| Autofill | Choose an exercise you've logged before | Weight and reps pre-fill from your last working set, and "Last: …" shows it |
+| Crown | Turn the crown on the weight | Steps of 2.5 kg (or 5 lb), with a haptic per step |
+| Plates | Barbell exercise | "Per side" updates as the weight changes |
+| Log set | Log set button (or double tap) | The set appears under "This workout". A rest timer starts and buzzes when it ends |
+| Save | End workout → Save to Health | A Traditional Strength Training workout appears in the Fitness app. Events: `saved to Health` |
+| Muscles | Strength → Muscles | The muscles you trained turn yellow or red, with a "ready" time. The others stay green |
+| Records | Strength → Best estimated 1RM | Updates. "Record: …" appears on the last workout when you beat an earlier best |
+| Load | Load page, the next day | The strength workout's heart rate counts toward load, like any workout |
 
 ## Results sheet
 
