@@ -751,6 +751,15 @@ final class AppModel: ObservableObject {
         saveRoutines()
     }
 
+    /// Merges routine edits from iPhone (newest edit per routine wins; deletions are kept).
+    func mergeRoutines(_ remote: RoutineLibrary) {
+        let merged = routines.merged(with: remote)
+        guard merged != routines else { return }
+        routines = merged
+        log(.persist, .info, "routines merged from iPhone (\(merged.routines.count))")
+        saveRoutines()
+    }
+
     func duplicateRoutine(_ id: UUID) { routines.duplicate(id, at: Date()); saveRoutines() }
     func archiveRoutine(_ id: UUID, _ archived: Bool) { routines.setArchived(id, archived, at: Date()); saveRoutines() }
     func deleteRoutine(_ id: UUID) { routines.delete(id); saveRoutines() }

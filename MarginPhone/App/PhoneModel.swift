@@ -37,6 +37,7 @@ final class PhoneModel: NSObject, ObservableObject {
         labs = (try? JSONDecoder().decode([LabResult].self, from: UserDefaults.standard.data(forKey: Keys.labs) ?? Data())) ?? []
         pinned = (try? JSONDecoder().decode([DashboardMetric].self, from: UserDefaults.standard.data(forKey: Keys.pinned) ?? Data()))
             ?? [.strain, .energy, .stress, .sleep, .hrv, .topLift]
+        localRoutines = (try? JSONDecoder().decode(RoutineLibrary.self, from: UserDefaults.standard.data(forKey: "phone.routines.v1") ?? Data()))
         super.init()
         if let data = try? Data(contentsOf: Self.payloadURL), case .ok(let p) = PhonePayload.decode(data) {
             payload = p
@@ -87,6 +88,51 @@ final class PhoneModel: NSObject, ObservableObject {
     fileprivate func updateLink(_ s: WCSession) {
         watchPaired = s.isPaired
         watchReachable = s.isReachable
+    }
+
+    // MARK: Routines (edited here, synced to the watch)
+
+    /// Routines as last seen from the watch, plus edits made on this iPhone.
+    @Published private(set) var localRoutines: RoutineLibrary?
+
+    var routines: RoutineLibrary {
+        let fromWatch = payload?.routines ?? RoutineLibrary()
+        return localRoutines.map { $0.merged(with: fromWatch) } ?? fromWatch
+    }
+
+    func saveRoutine(_ r: Routine) {
+        var lib = routines
+        if lib.routine(r.id) == nil {
+            var new = lib.create(name: r.name, items: r.items, at: Date())
+            new.notes = r.notes
+            lib.update(new, at: Date())
+        } else {
+            lib.update(r, at: Date())
+        }
+        push(lib)
+    }
+
+    func deleteRoutine(_ id: UUID) {
+        var lib = routines
+        lib.delete(id, at: Date())
+        push(lib)
+    }
+
+    func duplicateRoutine(_ id: UUID) {
+        var lib = routines
+        lib.duplicate(id, at: Date())
+        push(lib)
+    }
+
+    /// Queued for the watch (delivered when it is next reachable); merged there by newest edit.
+    private func push(_ lib: RoutineLibrary) {
+        localRoutines = lib
+        if let data = try? JSONEncoder().encode(lib) {
+            UserDefaults.standard.set(data, forKey: "phone.routines.v1")
+            if WCSession.isSupported(), WCSession.default.activationState == .activated {
+                WCSession.default.transferUserInfo(["routines": data])
+            }
+        }
     }
 
     // MARK: Labs

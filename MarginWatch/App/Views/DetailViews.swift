@@ -100,6 +100,13 @@ struct SleepView: View {
                     MetricRow(label: "7-night debt", value: Fmt.hours(s.debtHours),
                               tint: s.debtHours >= 5 ? .orange : .primary)
                     MetricRow(label: "Tonight's need", value: Fmt.hours(s.tonightNeedHours), tint: .indigo)
+                    if let h = b.sleepHistory, !h.isEmpty {
+                        NavigationLink {
+                            ScrollView { VStack(spacing: 6) { SleepHistoryList(nights: h) }.padding(.horizontal, 4) }.navigationTitle("Sleep history")
+                        } label: {
+                            Label("Sleep history", systemImage: "calendar").font(.footnote)
+                        }
+                    }
                     NavigationLink {
                         SmartAlarmSettingsView(alarm: model.smartAlarm)
                     } label: {

@@ -68,6 +68,12 @@ extension PhoneSync: WCSessionDelegate {
         Task { @MainActor in self.finished(errorMessage: message) }
     }
 
+    /// Routine edits made on iPhone.
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        guard let data = userInfo["routines"] as? Data, let lib = try? JSONDecoder().decode(RoutineLibrary.self, from: data) else { return }
+        Task { @MainActor in AppModel.shared.mergeRoutines(lib) }
+    }
+
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         guard message["request"] as? String == "refresh" else { return }
         Task { @MainActor in self.onRefreshRequest?() }

@@ -14,6 +14,14 @@ struct TodayView: View {
                         .frame(width: 118, height: 118)
                     DirectiveRow(plan: b.plan)
                     StatusBadge(recovery: b.recovery)
+                    if let e = b.explanation, b.recovery.score != nil {
+                        NavigationLink {
+                            ScrollView { ExplanationView(explanation: e).padding(.horizontal, 4) }.navigationTitle("Why today")
+                        } label: {
+                            Text(e.lines.first ?? e.headline).font(.caption2).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                    }
                     TileGrid(brief: b)
                     // What is my body doing?
                     if let reports = b.healthMetrics { BodyDeviationsView(reports: reports) }
