@@ -40,8 +40,9 @@ targets:
         CFBundleDisplayName: Margin
         WKApplication: true
         WKWatchOnly: true
-        WKBackgroundModes: [alarm]
+        WKBackgroundModes: [alarm, workout-processing]
         MarginAppGroupID: $(APP_GROUP_ID)
+        NSHealthUpdateUsageDescription: Margin saves the strength workouts you log, with the heart rate and energy your watch records during them, so they count toward your rings and training load.
         NSHealthShareUsageDescription: Margin reads heart rate, HRV, resting heart rate, respiratory rate, wrist temperature, sleep, workouts, steps, running metrics, VO2 max, body measurements, blood pressure, glucose, nutrition and cycle data to compute readiness, training load and trends. All processing happens on your watch.
     entitlements:
       path: MarginWatch/Support/Margin.entitlements

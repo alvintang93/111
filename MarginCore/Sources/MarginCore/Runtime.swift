@@ -2,7 +2,7 @@ import Foundation
 
 public enum MarginCoreInfo {
     /// Bumped whenever scoring rules change, so logs can be compared across versions.
-    public static let engineVersion = "2.2.0"
+    public static let engineVersion = "2.3.0"
 }
 
 // MARK: - Complication state

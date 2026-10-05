@@ -640,6 +640,7 @@ public struct Engine {
 
     public func brief(journal: [Day: Set<String>] = [:], intake: [IntakeEntry] = [],
                       lifestyle: LifestyleSettings = LifestyleSettings(), biomarkers: BiomarkerInput? = nil,
+                      strength: StrengthLog? = nil,
                       historyDays: Int = 14,
                       generatedAt: Date = Date(), dataSyncedAt: Date? = nil) -> DailyBrief {
         let i = todayIndex
@@ -704,7 +705,12 @@ public struct Engine {
             timelines: (max(0, i - 1)...i).map { timeline(at: $0, journal: journal, entries: intake) },
             biomarkers: biomarkerSummary(biomarkers, lifestyle: lifestyle, now: now),
             cardioFocus: cardioFocusSummary(zones: lifestyle.zones),
-            series: compareSeries(intake: intake)
+            series: compareSeries(intake: intake),
+            strength: strength.flatMap {
+                StrengthSummary.make(log: $0, now: now,
+                                     bodyMassKg: lifestyle.bodyMassKg ?? biomarkers?[.bodyMass].last?.value ?? 70,
+                                     pinnedExerciseID: lifestyle.pinnedLiftID)
+            }
         )
     }
 }

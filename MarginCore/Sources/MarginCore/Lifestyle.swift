@@ -44,6 +44,11 @@ public struct LifestyleSettings: Codable, Sendable, Equatable {
     public var checkIns = CheckInSettings()
     public var zones = ZoneSettings.standard
     public var smartAlarm = SmartAlarmSettings()
+    public var weightUnit = WeightUnit.kg
+    /// Lift shown by the "Top lift" tile and complication.
+    public var pinnedLiftID: String? = "bench-press"
+    public var barWeightKg = 20.0
+    public var restSeconds = 120
 
     public init() {}
 
@@ -62,7 +67,23 @@ public struct LifestyleSettings: Codable, Sendable, Equatable {
         checkIns = try c.decodeIfPresent(CheckInSettings.self, forKey: .checkIns) ?? d.checkIns
         zones = (try? c.decodeIfPresent(ZoneSettings.self, forKey: .zones)) ?? d.zones
         smartAlarm = (try? c.decodeIfPresent(SmartAlarmSettings.self, forKey: .smartAlarm)) ?? d.smartAlarm
+        weightUnit = (try? c.decodeIfPresent(WeightUnit.self, forKey: .weightUnit)) ?? d.weightUnit
+        pinnedLiftID = c.contains(.pinnedLiftID) ? try c.decodeIfPresent(String.self, forKey: .pinnedLiftID) : d.pinnedLiftID
+        barWeightKg = (try? c.decodeIfPresent(Double.self, forKey: .barWeightKg)) ?? d.barWeightKg
+        restSeconds = (try? c.decodeIfPresent(Int.self, forKey: .restSeconds)) ?? d.restSeconds
     }
+}
+
+public enum WeightUnit: String, Codable, Sendable, CaseIterable {
+    case kg, lb
+
+    public static let kgPerLb = 0.45359237
+
+    public func display(_ kg: Double) -> Double { self == .kg ? kg : kg / Self.kgPerLb }
+    public func toKg(_ v: Double) -> Double { self == .kg ? v : v * Self.kgPerLb }
+    /// Weight step on the crown.
+    public var step: Double { self == .kg ? 2.5 : 5 }
+    public var plates: [Double] { self == .kg ? PlateCalculator.kgPlates : PlateCalculator.lbPlates }
 }
 
 public struct CheckInSettings: Codable, Sendable, Equatable {

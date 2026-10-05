@@ -290,7 +290,7 @@ If what you have already taken leaves the limit reached at bedtime, there is no 
 
 Fluid target = 35 ml per kg of body mass (Health's latest, or 70 kg) + 10 ml per
 workout minute, rounded to 50 ml. Caffeine and water logs stay on the watch.
-Margin still writes nothing to Health.
+Margin does not write them to Health. Since engine 2.3, the only thing Margin writes to Health is the strength workouts you log (§24).
 
 ## 17. Activity status
 
@@ -381,3 +381,37 @@ the haptic alarm. The latest wake time always triggers it. watchOS lets apps
 schedule the session only while they are open, so Margin re-arms it every time it
 comes to the foreground. The movement threshold is a heuristic and has not been
 validated against sleep staging.
+
+## 24. Strength (engine 2.3)
+
+**Logging.** A strength workout runs as a watchOS workout session (Traditional
+Strength Training), so heart rate is sampled densely and counts toward training
+load like any workout. Saving it writes the workout, plus the heart rate and
+active energy the watch recorded, to Health. That is the only data Margin writes.
+Sets (exercise, weight, reps, optional RPE, warm-up flag) stay in Margin's log on
+the watch. The next set of an exercise is pre-filled from your last working set.
+
+**Library.** 118 built-in movements, each with primary and secondary muscles from
+16 groups, plus any you add. Bodyweight movements carry the share of body mass
+moved (e.g. push-up 0.64, pull-up 1.0). Effective load = added weight + share ×
+body mass (Health's latest, or 70 kg).
+
+**Estimated 1RM.** Epley: weight × (1 + reps/30), reps capped at 12; 1 rep = the
+weight. A record is the best estimate per exercise. A first attempt is not shown
+as a record.
+
+**Muscle stimulus.** Each working set counts 1 hard-set equivalent for each primary
+muscle and ½ for each secondary one, times an effort factor: 1 without RPE, else
+clamp((RPE − 5)/5, 0.2, 1). Warm-ups count nothing. Weekly sets = sum over 7 days.
+For hypertrophy, 10–20 per muscle per week is a common evidence-based range.
+
+**Freshness.** Fatigue(t) = Σ stimulus × e^(−Δt/τ), with τ = 30 h for large
+groups (chest, back, glutes, quads, hamstrings, lower back) and 20 h for small ones.
+Freshness = 100 × e^(−fatigue/6). Ready means ≥ 80. The ready time is solved in
+closed form, assuming no more training: τ × ln(fatigue / 1.34). Six hard sets for
+quads give freshness ≈ 37 and ready in about 45 h. The constants are heuristics
+and have not been validated.
+
+**Plate calculator.** Greedy from the heaviest plate (optimal for standard plate
+sets): kg 25/20/15/10/5/2.5/1.25, lb 45/35/25/10/5/2.5. When the target can't be
+loaded exactly, it shows the closest load below.

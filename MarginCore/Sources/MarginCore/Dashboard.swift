@@ -2,7 +2,7 @@ import Foundation
 
 /// Metrics that can be pinned to the Today page or shown in a complication.
 public enum DashboardMetric: String, Codable, Sendable, CaseIterable {
-    case recovery, strain, energy, stress, sleep, hrv, sleepingHR, caffeine, water, hrRecovery
+    case recovery, strain, energy, stress, sleep, hrv, sleepingHR, caffeine, water, hrRecovery, topLift, muscles
 
     public var title: String {
         switch self {
@@ -16,6 +16,8 @@ public enum DashboardMetric: String, Codable, Sendable, CaseIterable {
         case .caffeine: return "Caffeine"
         case .water: return "Water"
         case .hrRecovery: return "HR recovery"
+        case .topLift: return "Top lift"
+        case .muscles: return "Muscles"
         }
     }
 }
@@ -113,6 +115,8 @@ public struct DashboardTile: Sendable, Equatable {
             return DashboardTile(metric: metric, value: String(format: "%.1f L", i.waterTodayMl / 1000),
                                  caption: String(format: "of %.1f L", i.waterTargetMl / 1000), fraction: f,
                                  tone: f >= 1 ? .good : .neutral, available: true)
+        case .topLift, .muscles:
+            return makeStrength(metric, brief: b, now: now, calendar: calendar, unit: .kg)
         case .hrRecovery:
             guard let h = b.heartRateRecovery else { return unavailable(metric, "No recent workout") }
             guard let d = h.recent.last?.drop else { return unavailable(metric, "No post-workout HR") }
@@ -120,6 +124,27 @@ public struct DashboardTile: Sendable, Equatable {
             return DashboardTile(metric: metric, value: String(format: "%.0f", d),
                                  caption: h.typicalDrop.map { String(format: "bpm · typical %.0f", $0) } ?? "bpm in 1 min",
                                  fraction: nil, tone: tone, available: true)
+        }
+    }
+
+    /// Strength tiles need the weight unit, so they are built separately.
+    public static func makeStrength(_ metric: DashboardMetric, brief: DailyBrief?, now: Date, calendar: Calendar,
+                                    unit: WeightUnit) -> DashboardTile {
+        guard let b = brief else { return unavailable(metric, "Open Margin") }
+        guard b.day == Day(now, calendar: calendar) else { return unavailable(metric, "Open to update") }
+        guard let st = b.strength else { return unavailable(metric, "Log a strength workout") }
+        switch metric {
+        case .topLift:
+            guard let r = st.pinnedLift else { return unavailable(metric, "Pinned lift not logged") }
+            return DashboardTile(metric: metric, value: String(format: "%.0f", unit.display(r.e1RM)),
+                                 caption: "\(unit.rawValue) e1RM · \(r.name)", fraction: nil, tone: .neutral, available: true)
+        default:
+            let ready = st.muscles.filter { Double($0.freshness) >= StrengthModel.readyFreshness }.count
+            let low = st.muscles.min { $0.freshness < $1.freshness }
+            return DashboardTile(metric: .muscles, value: "\(ready)/\(st.muscles.count)",
+                                 caption: low.map { "ready · \($0.muscle.title) \($0.freshness)" } ?? "ready",
+                                 fraction: Double(ready) / Double(max(st.muscles.count, 1)),
+                                 tone: ready == st.muscles.count ? .good : .fair, available: true)
         }
     }
 
