@@ -87,6 +87,13 @@ struct InsightsView: View {
                 Text("Log the journal daily. A tag is tested once it has ≥5 days with and ≥5 journaled days without it.")
                     .font(.footnote)
             }
+            if let pairs = model.brief?.metricInsights, !pairs.isEmpty {
+                Section("Metric pairs, 60 days") {
+                    ForEach(pairs) { p in MetricPairRow(insight: p) }
+                    Text("A fixed list of pairs, tested with Spearman's ρ and Holm-corrected at α = 0.05. Needs \(MetricPairs.minimumN) days with both values. Associations, not causes.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
         }
         .navigationTitle("Insights")
     }

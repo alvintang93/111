@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 import MarginCore
 
@@ -94,4 +95,66 @@ extension MetricReport {
 
     /// Notable for Today: at least 1 robust SD from baseline.
     var isNotable: Bool { (z.map { abs($0) >= 1 } ?? false) && current?.day != nil && state != .stale }
+}
+
+extension MetricPairInsight {
+    var title: String { "\(a.title) → \(b.title)\(lagDays == 1 ? " next day" : "")" }
+
+    var resultLine: String {
+        guard sufficient, let rho, let p = pValue else { return "\(n) of \(MetricPairs.minimumN) days with both values" }
+        return String(format: "ρ %+.2f · n %d · p %.3f%@", rho, n, p, significant ? " · significant" : "")
+    }
+}
+
+struct MetricPairRow: View {
+    let insight: MetricPairInsight
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(insight.title).font(.footnote.weight(.semibold))
+            Text(insight.resultLine).font(.caption2)
+                .foregroundStyle(insight.significant ? Color.green : Color.secondary)
+        }
+    }
+}
+
+struct MetricChart: View {
+    let report: MetricReport
+
+    var body: some View {
+        Chart {
+            if let b = report.baseline, b.scale > 0, report.kind != .hrv {
+                RectangleMark(yStart: .value("Low", b.center - b.scale), yEnd: .value("High", b.center + b.scale))
+                    .foregroundStyle(Color.green.opacity(0.12))
+            }
+            if let b = report.baseline {
+                RuleMark(y: .value("Usual", b.center)).foregroundStyle(Color.green.opacity(0.6)).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            }
+            ForEach(report.history) { o in
+                LineMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).foregroundStyle(.white.opacity(0.8))
+                PointMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).symbolSize(8).foregroundStyle(.white)
+            }
+        }
+        .chartYScale(domain: .automatic(includesZero: false))
+        .chartXAxis(.hidden)
+    }
+}
+
+struct ObservationRow: View {
+    let kind: HealthMetricKind
+    let obs: MetricObservation
+    let showTime: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(showTime ? obs.date.formatted(date: .abbreviated, time: .shortened) : obs.day.description)
+                    .font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(kind.format(obs.value)) \(kind.unit)").font(.caption2).monospacedDigit()
+            }
+            if let n = obs.note { Text(n).font(.system(size: 9)).foregroundStyle(.secondary) }
+            if let s = obs.source, showTime { Text(s).font(.system(size: 9)).foregroundStyle(.secondary) }
+        }
+    }
 }

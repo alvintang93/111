@@ -91,6 +91,7 @@ extension Engine {
             series(.steps) { k in records[days[k]].flatMap { $0.steps > 0 ? $0.steps : nil } },
             series(.caffeine) { k in intakeTotal(.caffeine, k) },
             series(.water) { k in intakeTotal(.water, k) },
+            series(.respiratoryRate) { k in records[days[k]]?.respiratoryRate },
         ]
     }
 }

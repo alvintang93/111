@@ -715,7 +715,8 @@ public struct Engine {
                                      pinnedExerciseID: lifestyle.pinnedLiftID)
             },
             healthMetrics: healthMetrics(biomarkers: biomarkers, now: now, access: access),
-            activities: (max(0, i - 13)...i).flatMap { activities(at: $0, strength: strength, activityLog: activityLog) }
+            activities: (max(0, i - 13)...i).flatMap { activities(at: $0, strength: strength, activityLog: activityLog) },
+            metricInsights: MetricPairs.analyse(compareSeries(intake: intake, lookback: 60), calendar: calendar)
         )
     }
 }

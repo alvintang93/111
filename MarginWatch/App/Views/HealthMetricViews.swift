@@ -124,27 +124,6 @@ struct MetricHeader: View {
     }
 }
 
-struct MetricChart: View {
-    let report: MetricReport
-
-    var body: some View {
-        Chart {
-            if let b = report.baseline, b.scale > 0, report.kind != .hrv {
-                RectangleMark(yStart: .value("Low", b.center - b.scale), yEnd: .value("High", b.center + b.scale))
-                    .foregroundStyle(Color.green.opacity(0.12))
-            }
-            if let b = report.baseline {
-                RuleMark(y: .value("Usual", b.center)).foregroundStyle(Color.green.opacity(0.6)).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-            }
-            ForEach(report.history) { o in
-                LineMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).foregroundStyle(.white.opacity(0.8))
-                PointMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).symbolSize(8).foregroundStyle(.white)
-            }
-        }
-        .chartYScale(domain: .automatic(includesZero: false))
-        .chartXAxis(.hidden)
-    }
-}
 
 struct MetricTrends: View {
     let report: MetricReport
@@ -169,24 +148,6 @@ struct MetricTrends: View {
     }
 }
 
-struct ObservationRow: View {
-    let kind: HealthMetricKind
-    let obs: MetricObservation
-    let showTime: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(showTime ? obs.date.formatted(date: .abbreviated, time: .shortened) : obs.day.description)
-                    .font(.caption2).foregroundStyle(.secondary)
-                Spacer()
-                Text("\(kind.format(obs.value)) \(kind.unit)").font(.caption2).monospacedDigit()
-            }
-            if let n = obs.note { Text(n).font(.system(size: 9)).foregroundStyle(.secondary) }
-            if let s = obs.source, showTime { Text(s).font(.system(size: 9)).foregroundStyle(.secondary) }
-        }
-    }
-}
 
 /// Today's "what is my body doing": only the readings at least 1 SD from your baseline.
 struct BodyDeviationsView: View {

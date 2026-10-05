@@ -232,6 +232,8 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var healthMetrics: [MetricReport]?
     /// Activities of the last 14 days, merged across Health and Margin, oldest first.
     public var activities: [ActivityEntry]?
+    /// Fixed metric pairs over the last 60 days (Spearman, Holm-corrected).
+    public var metricInsights: [MetricPairInsight]?
 }
 
 public struct BiomarkerSummary: Codable, Sendable, Equatable {
