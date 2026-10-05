@@ -228,6 +228,8 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var series: [MetricSeries]?
     // Added in engine 2.3.
     public var strength: StrengthSummary?
+    // Added in engine 2.4.
+    public var healthMetrics: [MetricReport]?
 }
 
 public struct BiomarkerSummary: Codable, Sendable, Equatable {

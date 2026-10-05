@@ -640,7 +640,7 @@ public struct Engine {
 
     public func brief(journal: [Day: Set<String>] = [:], intake: [IntakeEntry] = [],
                       lifestyle: LifestyleSettings = LifestyleSettings(), biomarkers: BiomarkerInput? = nil,
-                      strength: StrengthLog? = nil,
+                      strength: StrengthLog? = nil, access: HealthAccess = HealthAccess(),
                       historyDays: Int = 14,
                       generatedAt: Date = Date(), dataSyncedAt: Date? = nil) -> DailyBrief {
         let i = todayIndex
@@ -710,7 +710,8 @@ public struct Engine {
                 StrengthSummary.make(log: $0, now: now,
                                      bodyMassKg: lifestyle.bodyMassKg ?? biomarkers?.clean(.bodyMass, asOf: now).samples.last?.value ?? 70,
                                      pinnedExerciseID: lifestyle.pinnedLiftID)
-            }
+            },
+            healthMetrics: healthMetrics(biomarkers: biomarkers, now: now, access: access)
         )
     }
 }
