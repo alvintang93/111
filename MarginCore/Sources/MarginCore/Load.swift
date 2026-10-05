@@ -7,6 +7,8 @@ public struct LoadPoint: Codable, Sendable, Equatable {
     /// Acute (fatigue) and chronic (fitness) EWMAs after including `load`.
     public let atl: Double
     public let ctl: Double
+    /// Unwell or sore day: ATL and CTL were carried over unchanged.
+    public var paused: Bool = false
 }
 
 public enum LoadModel {
@@ -16,7 +18,9 @@ public enum LoadModel {
 
     /// Unobserved days (watch not worn) are counted as zero load and reported
     /// via `observed` so callers can down-weight confidence.
-    public static func run(days: [Day], loads: [Double?], params: ModelParameters) -> [LoadPoint] {
+    /// Paused days (unwell or sore) carry ATL and CTL over unchanged, so time
+    /// off neither adds fatigue nor reads as lost fitness.
+    public static func run(days: [Day], loads: [Double?], paused: Set<Day> = [], params: ModelParameters) -> [LoadPoint] {
         precondition(days.count == loads.count)
         let ka = decay(days: params.atlDays)
         let kc = decay(days: params.ctlDays)
@@ -26,6 +30,10 @@ public enum LoadModel {
         var out: [LoadPoint] = []
         out.reserveCapacity(days.count)
         for (d, l) in zip(days, loads) {
+            if paused.contains(d) {
+                out.append(LoadPoint(day: d, load: l ?? 0, observed: l != nil, atl: atl, ctl: ctl, paused: true))
+                continue
+            }
             let x = l ?? 0
             atl += (x - atl) * ka
             ctl += (x - ctl) * kc

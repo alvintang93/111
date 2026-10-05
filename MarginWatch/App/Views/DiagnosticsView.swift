@@ -265,6 +265,8 @@ extension HealthInput {
         case .wristTemperature: return "Wrist temperature"
         case .sleep: return "Sleep"
         case .workouts: return "Workouts"
+        case .steps: return "Steps"
+        case .heartRateRecovery: return "Heart rate recovery (Apple)"
         }
     }
 }

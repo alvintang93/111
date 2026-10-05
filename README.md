@@ -6,13 +6,15 @@ risk limit is**. Every score breaks down into its inputs, and the false-alarm
 rate is measured, not assumed.
 
 ```
-Today ─ Recovery ring · PUSH / MAINTAIN / RECOVER / REST · load vs target band
+Today ─ Recovery ring · PUSH / MAINTAIN / RECOVER / REST · pinned tiles · quick log
+Energy ─ Energy bank curve (wake → now) · hourly stress · stress bands
 Drivers ─ HRV, sleeping HR, sleep, respiration, temp: value, baseline, z, weight
 Sleep ─ asleep vs need, stages, efficiency, regularity, debt, tonight's need
-Load ─ TRIMP today, ATL / CTL / form / ACWR, ceiling, HR-reserve zones, 14-day chart
+Load ─ Strain 0–100, TRIMP today, ATL / CTL / form / ACWR, ceiling, zones, HR recovery
 Trends ─ 14-day recovery and HRV
-More ─ Journal, Insights (tag → next-night HRV, Holm-corrected), Settings, How it works
-Complications ─ circular, corner, rectangular, inline (Smart Stack too)
+More ─ Timeline, Caffeine & water, Status (unwell / sore / travel), Journal, Insights, Settings
+Complications ─ Readiness, Strain, Energy, Stress, Sleep (circular, corner, rectangular, inline)
+Check-ins ─ morning summary, evening journal, caffeine cut-off, weekly review (local notifications)
 ```
 
 ## What it does that a typical recovery app does not
@@ -33,7 +35,7 @@ I have not benchmarked against Bevel, whose algorithms are proprietary, so
 ## Repository layout
 
 ```
-MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 88 unit tests.
+MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 112 unit tests.
 MarginWatch/App/   SwiftUI watch app: HealthKit adapter, cache, model, views
 MarginWatch/Widgets/  WidgetKit complications
 MarginWatch/Shared/   Code shared by app and complications
@@ -41,6 +43,7 @@ project.yml        XcodeGen spec (the .xcodeproj is generated, not committed)
 docs/METHODOLOGY.md   Formulas, thresholds, measured error rates, limitations
 docs/PIPELINE_AUDIT.md   Data flow and every silent-failure point, with its handling
 docs/DEVICE_VALIDATION.md   Checklist to validate the app on an Apple Watch Ultra 2
+docs/ROADMAP.md   Requested features mapped to batches
 ```
 
 ## Install on your watch
@@ -73,7 +76,7 @@ Groups isn't available for your team, you need the paid Apple Developer Program.
 ## Verify it yourself
 
 ```bash
-swift test --package-path MarginCore    # 88 tests, macOS or Linux
+swift test --package-path MarginCore    # 112 tests, macOS or Linux
 python3 scripts/check_product_language.py
 ```
 

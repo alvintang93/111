@@ -95,6 +95,37 @@ public struct ModelParameters: Sendable, Equatable {
     public var minLoadHistoryDays = 28
     public var minCTLForTargets = 10.0
 
+    // Daytime physiology (hourly slices, stress, strain, energy). See METHODOLOGY §12-§14.
+    /// A step sample at or above this cadence (steps/min) marks the time as moving.
+    public var movingCadence = 30.0
+    /// Heart rate this long after movement or a workout is not treated as rest.
+    public var movementSettleTime: TimeInterval = 3 * 60
+    public var workoutSettleTime: TimeInterval = 10 * 60
+    /// Rest-state heart rate this fraction of heart-rate reserve above HRrest = stress 100.
+    public var stressFullScaleHRR = 0.30
+    /// An hour needs this much rest-state time to get a stress level.
+    public var minStressRestSeconds: TimeInterval = 10 * 60
+    /// A daily stress score needs this much rest-state time in total.
+    public var minDailyStressRestSeconds: TimeInterval = 60 * 60
+    /// Strain reference (TRIMP) used until chronic load is eligible.
+    public var strainFallbackReference = 50.0
+    /// Apple's 1-minute recovery sample is matched to a workout ending up to this long before it.
+    public var appleRecoveryMatchWindow: TimeInterval = 10 * 60
+    /// Days of workouts used for the typical heart-rate recovery.
+    public var heartRateRecoveryBaselineDays = 60
+
+    // Energy bank
+    public var energyAwakeDrainPerHour = 2.0
+    /// Energy drained by one reference day's worth of load (TRIMP = strain reference).
+    public var energyStrainDrainPerReference = 30.0
+    /// Extra drain per rest-state hour at stress 100 (scaled from 0 at stress 50).
+    public var energyStressDrainPerHour = 4.0
+    /// Charge per rest-state hour at stress 25 or below.
+    public var energyRestChargePerHour = 2.0
+    public var energyNapChargePerHour = 12.0
+    /// Weight of the recovery score in the morning level (the rest is the sleep score).
+    public var energyRecoveryWeight = 0.65
+
     // Journal impact
     public var minTagSamples = 5
     public var tagAlpha = 0.05

@@ -150,3 +150,88 @@ extension DailyBrief {
         day == Day(now, calendar: calendar)
     }
 }
+
+extension DashboardTile.Tone {
+    var color: Color {
+        switch self {
+        case .good: return .green
+        case .fair: return .yellow
+        case .poor: return .orange
+        case .neutral: return .primary
+        }
+    }
+}
+
+extension StatusKind {
+    var title: String {
+        switch self {
+        case .unwell: return "Unwell"
+        case .sore: return "Sore"
+        case .travel: return "Travel"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .unwell: return "thermometer.medium"
+        case .sore: return "bandage"
+        case .travel: return "airplane"
+        }
+    }
+}
+
+extension StressBand {
+    var title: String {
+        switch self {
+        case .rest: return "Rest"
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .rest: return .blue
+        case .low: return .green
+        case .medium: return .orange
+        case .high: return .red
+        }
+    }
+}
+
+extension TimelineItem.Kind {
+    var symbol: String {
+        switch self {
+        case .sleep: return "moon.fill"
+        case .wake: return "sun.max.fill"
+        case .workout: return "figure.run"
+        case .caffeine: return "cup.and.saucer.fill"
+        case .water: return "drop.fill"
+        case .journal: return "book.closed"
+        case .status: return "flag.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .sleep: return .indigo
+        case .wake: return .yellow
+        case .workout: return .orange
+        case .caffeine: return .brown
+        case .water: return .cyan
+        case .journal: return .green
+        case .status: return .pink
+        }
+    }
+}
+
+extension EnergySummary.StartSource {
+    var explanation: String {
+        switch self {
+        case .recoveryAndSleep: return "Started from 65% recovery score and 35% sleep score."
+        case .recovery: return "Started from the recovery score (no sleep score)."
+        case .sleep: return "Started from the sleep score only, while recovery is unavailable."
+        }
+    }
+}

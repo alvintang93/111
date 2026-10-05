@@ -153,6 +153,7 @@ struct LoadView: View {
         ScrollView {
             VStack(spacing: 8) {
                 if let b = model.brief, b.isCurrent() {
+                    if let s = b.strain { StrainCard(strain: s) }
                     LoadTargetBar(load: b.load.todayLoad, low: b.plan.targetLow, high: b.plan.targetHigh)
                     MetricRow(label: "Ceiling today", value: Fmt.load(b.plan.ceiling))
                     MetricRow(label: "ATL (7d)", value: Fmt.load(b.load.atl))
@@ -180,6 +181,10 @@ struct LoadView: View {
                     .frame(height: 80)
                     Text("HRmax \(Int(b.hrMaxUsed)) · HRrest \(Int(b.hrRestUsed.rounded()))")
                         .font(.caption2).foregroundStyle(.secondary)
+                    if let hrr = b.heartRateRecovery {
+                        SectionHeader(text: "Heart-rate recovery")
+                        HeartRateRecoverySection(summary: hrr)
+                    }
                 } else {
                     EmptyState()
                 }

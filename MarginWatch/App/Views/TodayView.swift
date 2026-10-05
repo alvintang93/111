@@ -8,9 +8,12 @@ struct TodayView: View {
         ScrollView {
             VStack(spacing: 10) {
                 if let b = model.brief, b.isCurrent() {
+                    StatusBanner(statuses: b.statuses ?? [])
                     RecoveryRing(score: b.recovery.score, band: b.recovery.band)
                         .frame(width: 118, height: 118)
                     DirectiveRow(plan: b.plan)
+                    TileGrid(brief: b)
+                    QuickLogRow()
                     LoadTargetBar(load: b.load.todayLoad, low: b.plan.targetLow, high: b.plan.targetHigh)
                     if !b.recovery.flags.isEmpty {
                         FlagList(flags: b.recovery.flags)

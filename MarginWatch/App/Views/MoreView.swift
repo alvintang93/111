@@ -4,6 +4,9 @@ import MarginCore
 struct MoreView: View {
     var body: some View {
         List {
+            NavigationLink { DayTimelineView() } label: { Label("Timeline", systemImage: "list.bullet.rectangle") }
+            NavigationLink { IntakeView() } label: { Label("Caffeine & water", systemImage: "cup.and.saucer") }
+            NavigationLink { StatusView() } label: { Label("Status", systemImage: "flag") }
             NavigationLink { JournalView() } label: { Label("Journal", systemImage: "book.closed") }
             NavigationLink { InsightsView() } label: { Label("Insights", systemImage: "chart.bar.xaxis") }
             NavigationLink { SettingsView() } label: { Label("Settings", systemImage: "gearshape") }
@@ -119,6 +122,7 @@ struct SettingsView: View {
                 Stepper(String(format: "ACWR ceiling %.2f", model.settings.acwrCeiling),
                         value: $model.settings.acwrCeiling, in: 1.1...1.6, step: 0.05)
             }
+            LifestyleSettingsSections()
             Section("Data") {
                 Button("Rebuild from Health") { confirmRebuild = true }
                     .disabled(model.isRefreshing)

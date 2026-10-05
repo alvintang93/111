@@ -218,3 +218,84 @@ Details and the failure-point inventory are in [`PIPELINE_AUDIT.md`](PIPELINE_AU
 - **Wrist temperature form.** Whether HealthKit stores absolute or deviation values is unverified. Scoring is relative to your own baseline, so both work, but this should be confirmed on device.
 - **Overnight-closed rule.** If you are still asleep at 10:00 and no sleep has been recorded yet, a score can be computed from a partial night.
 - **ACWR** is a contested injury-risk predictor in the literature. Here it is used only as a load-change speed limit, not as an injury model.
+
+## 12. Hourly slices (engine 2.1, cache schema 3)
+
+Each day's activity window is split into hours from its stored start. For each hour the cache keeps:
+- time at heart rate in 10-bpm bins (same holding rule as §1: each sample holds until the next, capped at 300 s, split at hour boundaries);
+- **rest-state** heart-rate time and its seconds-weighted mean. A heart-rate piece is rest-state when its midpoint is not inside sleep or in-bed time (any source), a workout plus 10 min afterwards, or a moving step sample (cadence ≥ 30 steps/min) plus 3 min afterwards;
+- asleep, workout and step totals.
+
+The slices' heart-rate time adds up to the daily histogram's (unit-tested). Like the histogram, slices store time at HR rather than scores, so changing HRmax, HRrest or sex re-scores every hour without a new query.
+
+## 13. Strain
+
+Strain = 100 × (1 − 2^(−TRIMP / reference)). The reference is your current CTL
+(42-day chronic load) once load targets are eligible (§6: 28 days and CTL ≥ 10),
+so **50 = a typical day for you**, 75 = two typical days, 87.5 = three. Before
+that, the reference is a fixed 50 TRIMP and the strain is labelled provisional.
+Today's load target band (§6) is shown on the same scale. Strain per hour uses the
+10-bpm slices and is rescaled so the hours add up to the exact daily TRIMP.
+
+## 14. Stress and energy
+
+**Stress** (0–100) uses rest-state heart rate only: level = clamp((HR − HRrest) /
+(0.30 × (HRmax − HRrest)), 0, 1) × 100, computed per hour from the hour's rest-state
+mean when it has ≥ 10 rest-state minutes. Bands: 0–25 rest, 26–50 low, 51–75
+medium, 76–100 high. The daily score is the rest-time-weighted mean of hourly
+levels and needs ≥ 60 rest-state minutes.
+
+Limits: heart rate rises for reasons other than stress (heat, caffeine, digestion,
+standing still). Daytime HRV is not used because Apple Watch records it only
+occasionally. The level is relative to *your* HRrest and HRmax, not a population.
+
+**Energy bank** (0–100) starts at wake:
+- recovery and sleep available: 0.65 × recovery score + 0.35 × sleep score;
+- recovery only: the recovery score;
+- sleep only: 20 + 0.7 × sleep score (cannot reach the extremes without overnight physiology);
+- neither: no energy value.
+
+It then runs hour by hour until the last sync:
+- −2 per waking hour;
+- −30 × (hour's TRIMP / strain reference), so a typical day's load costs about 30;
+- for rest-state time at stress > 50: −4 × (level − 50)/50 per hour;
+- for rest-state time at stress ≤ 25: +2 per hour;
+- naps: +12 per hour asleep.
+
+The result is clamped to 0–100. The constants are heuristics: a typical day
+(16 h awake, one typical day's load, about 6 h of calm rest) ends about 50 points
+below the start. They are not fitted to data.
+
+## 15. Heart-rate recovery
+
+For each workout that started in the day: end HR = highest sample in the last
+60 s of the workout. The one-minute drop = end HR − the sample nearest 60 s after
+the end (within ±15 s). The two-minute drop uses 120 s (±20 s). When Health has
+Apple's own one-minute recovery value for the workout (a sample starting up to
+10 min after it ends), that value is used instead. The typical value is the median
+over the last 60 days, excluding the newest workout, and needs ≥ 3 workouts.
+
+## 16. Caffeine and hydration
+
+Each dose is absorbed at a constant rate over 45 min and eliminated with first-order
+kinetics (half-life 5 h by default, adjustable from 2 to 10 h, since individual
+half-lives vary widely). Bedtime is the median sleep onset of the last 7 nights
+(≥ 3 needed), otherwise 23:00. The **cut-off** is the latest time one usual dose
+(95 mg by default) keeps caffeine at bedtime at or under the limit (50 mg by
+default), solved in closed form:
+
+  gap = 45 min − ln(ratio)/k, ratio = (limit − residual at bedtime) × k × 45 min / (dose × (1 − e^(−k × 45 min)))
+
+If what you have already taken leaves the limit reached at bedtime, there is no cut-off.
+
+Fluid target = 35 ml per kg of body mass (Health's latest, or 70 kg) + 10 ml per
+workout minute, rounded to 50 ml. Caffeine and water logs stay on the watch.
+Margin still writes nothing to Health.
+
+## 17. Activity status
+
+You can mark periods as *unwell*, *sore* or *travel*. Days inside any marked period:
+- are left out of every personal baseline (HRV, sleeping HR, respiration, temperature), out of score calibration and out of the 7-day HRV trend (§2, §3, §4);
+- for unwell and sore only: the load model is paused, so ATL and CTL carry over unchanged instead of decaying, and Push is off.
+
+Today's score is still computed on a marked day, against the unmarked baseline.

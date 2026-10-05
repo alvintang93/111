@@ -98,7 +98,9 @@ public struct DayWindows: Codable, Sendable, Equatable {
 /// recomputed from these, so changing settings never requires a re-query.
 public struct DayRecord: Codable, Sendable, Equatable {
     /// v2: windows, ingestion stats, workouts, fingerprint, plausibility filtering.
-    public static let schemaVersion = 2
+    /// v3: hourly slices (stress, strain by hour, energy), workout details with
+    /// heart-rate recovery, step totals.
+    public static let schemaVersion = 3
 
     public let day: Day
     public var sleep: SleepNight?
@@ -122,6 +124,12 @@ public struct DayRecord: Codable, Sendable, Equatable {
     public var builtAt: Date?
     /// See `SourceFingerprint`.
     public var sourceFingerprint: String?
+    /// Hours of the activity window that have any data, oldest first.
+    public var hours: [HourSlice]
+    /// Workouts that started in the activity window, with heart-rate recovery.
+    public var workoutDetails: [WorkoutDetail]
+    /// Steps in the activity window.
+    public var steps: Double
 
     public var coverageHours: Double { activity.totalSeconds / 3600 }
 
@@ -147,7 +155,10 @@ public struct DayRecord: Codable, Sendable, Equatable {
                 ingestion: IngestionStats = IngestionStats(),
                 windows: DayWindows? = nil,
                 builtAt: Date? = nil,
-                sourceFingerprint: String? = nil) {
+                sourceFingerprint: String? = nil,
+                hours: [HourSlice] = [],
+                workoutDetails: [WorkoutDetail] = [],
+                steps: Double = 0) {
         self.day = day
         self.sleep = sleep
         self.lnHRV = lnHRV
@@ -164,6 +175,9 @@ public struct DayRecord: Codable, Sendable, Equatable {
         self.windows = windows
         self.builtAt = builtAt
         self.sourceFingerprint = sourceFingerprint
+        self.hours = hours
+        self.workoutDetails = workoutDetails
+        self.steps = steps
     }
 }
 
@@ -177,10 +191,15 @@ public struct RawDayInput: Sendable {
     /// Degrees Celsius.
     public var wristTemperature: [TimedValue]
     public var workouts: [WorkoutSample]
+    /// Step counts (value = steps over the sample interval).
+    public var steps: [TimedValue]
+    /// Apple's one-minute heart-rate recovery samples (bpm drop).
+    public var heartRateRecovery: [TimedValue]
 
     public init(sleep: [SleepSegment] = [], hrv: [TimedValue] = [], heartRate: [HRSample] = [],
                 restingHR: [TimedValue] = [], respiratoryRate: [TimedValue] = [],
-                wristTemperature: [TimedValue] = [], workouts: [WorkoutSample] = []) {
+                wristTemperature: [TimedValue] = [], workouts: [WorkoutSample] = [],
+                steps: [TimedValue] = [], heartRateRecovery: [TimedValue] = []) {
         self.sleep = sleep
         self.hrv = hrv
         self.heartRate = heartRate
@@ -188,6 +207,8 @@ public struct RawDayInput: Sendable {
         self.respiratoryRate = respiratoryRate
         self.wristTemperature = wristTemperature
         self.workouts = workouts
+        self.steps = steps
+        self.heartRateRecovery = heartRateRecovery
     }
 
     /// Union of all nominal windows `DayRecordBuilder` reads for `day`.
@@ -225,6 +246,10 @@ public enum DayRecordBuilder {
                                      limits: limits, stats: &stats[.wristTemperature])
         let workoutsIn = Sanitizer.workouts(input.workouts, within: union, asOf: asOf, limits: limits,
                                             stats: &stats[.workouts])
+        let stepsIn = Sanitizer.timed(input.steps, range: limits.steps, within: union, asOf: asOf,
+                                      limits: limits, stats: &stats[.steps])
+        let hrrIn = Sanitizer.timed(input.heartRateRecovery, range: limits.heartRateRecovery, within: union,
+                                    asOf: asOf, limits: limits, stats: &stats[.heartRateRecovery])
 
         let night = SleepAggregator.aggregate(segments: sleepIn, window: windows.night,
                                               boutMergeGap: params.sleepBoutMergeGap)
@@ -247,6 +272,8 @@ public enum DayRecordBuilder {
         let rhr = rhrIn.filter { $0.start >= act.start && $0.start < act.end }.map(\.value)
         let rr = rrIn.filter { inOvernight($0.start) }.map(\.value)
         let temp = tempIn.filter { $0.end > windows.night.start && $0.end <= windows.night.end }.map(\.value)
+        let stepsInDay = stepsIn.filter { $0.start >= act.start && $0.start < act.end }
+        let workoutsStarted = workoutsIn.filter { $0.start >= act.start && $0.start < act.end }
 
         return DayRecord(
             day: day,
@@ -264,7 +291,12 @@ public enum DayRecordBuilder {
             ingestion: stats,
             windows: windows,
             builtAt: builtAt,
-            sourceFingerprint: SourceFingerprint.compute(windows: windows, input: input, asOf: asOf, limits: limits)
+            sourceFingerprint: SourceFingerprint.compute(windows: windows, input: input, asOf: asOf, limits: limits),
+            hours: HourSliceBuilder.build(heartRate: hrIn, steps: stepsIn, sleep: sleepIn, workouts: workoutsIn,
+                                          window: act, params: params),
+            workoutDetails: WorkoutRecoveryAnalyzer.analyze(workouts: workoutsStarted, heartRate: hrIn,
+                                                            appleRecovery: hrrIn, params: params),
+            steps: stepsInDay.reduce(0) { $0 + $1.value }
         )
     }
 }
