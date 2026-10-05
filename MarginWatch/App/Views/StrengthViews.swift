@@ -116,6 +116,7 @@ struct ActiveStrengthView: View {
                         Label("Log set", systemImage: "checkmark.circle.fill")
                     }
                     .tint(.green)
+                    .glassButton(prominent: true)
                     .modifier(PrimaryDoubleTap())
                 } else {
                     Button("Choose exercise") { picking = true }.tint(.green)
@@ -203,6 +204,8 @@ struct ActiveStrengthView: View {
                     .font(.system(size: 10)).foregroundStyle(.secondary)
             }
         }
+        .padding(8)
+        .glassCard(cornerRadius: 18)
     }
 
     private func select(_ id: String) {

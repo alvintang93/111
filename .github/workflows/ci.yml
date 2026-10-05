@@ -49,12 +49,22 @@ jobs:
             -destination 'generic/platform=watchOS Simulator' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO | tee xcodebuild.log
+      - name: Build iPhone companion + widgets (simulator, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Margin.xcodeproj \
+            -scheme MarginPhone \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-phone \
+            CODE_SIGNING_ALLOWED=NO | tee -a xcodebuild.log
       - name: Compiler errors (on failure)
         if: failure()
         run: grep -E "error:" xcodebuild.log | sort -u | head -100 || true
       - name: Compiler warnings in project sources
         run: |
-          grep -E "/(MarginWatch|MarginCore)/[^:]+:[0-9]+:[0-9]+: warning:" xcodebuild.log | sort -u > warnings.txt || true
+          grep -E "/(MarginWatch|MarginCore|MarginPhone)/[^:]+:[0-9]+:[0-9]+: warning:" xcodebuild.log | sort -u > warnings.txt || true
           echo "$(wc -l < warnings.txt | tr -d ' ') unique warning(s) in project sources"
           cat warnings.txt
       - name: Inspect built bundle

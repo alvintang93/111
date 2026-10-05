@@ -37,6 +37,7 @@ struct TodayView: View {
                     Label(model.isRefreshing ? "Refreshing" : "Refresh", systemImage: "arrow.clockwise")
                 }
                 .disabled(model.isRefreshing)
+                .glassButton(prominent: true)
                 .modifier(PrimaryDoubleTap())
             }
             .padding(.horizontal, 4)

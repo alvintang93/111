@@ -5,7 +5,7 @@ ships as its own pull request, with unit tests in `MarginCore` and the product-l
 still passing. Margin stays a standalone watch app that computes everything on the watch.
 Batch 4 is the exception: it needs an iPhone companion and, for the AI coach, a network service.
 
-Status key: **Have** = already in Margin · **B1–B4** = batch · **Open** = needs a decision first. B1 shipped in PR #3, B2 in PR #4, B3 in PR #5.
+Status key: **Have** = already in Margin · **B1–B4** = batch · **Open** = needs a decision first. B1 shipped in PR #3, B2 in PR #4, B3 in PR #5, B4 in PR #6.
 
 ## Core metrics and readiness
 
@@ -81,3 +81,12 @@ last set, crown weight entry, RPE and warm-up flags, rest timer, plate calculato
 freshness and ready times, weekly hard sets per muscle, estimated-1RM records, and "Top lift" and "Muscles" tiles.
 Formulas are in `docs/METHODOLOGY.md` §24. Not done: the 700-exercise library (118 now, and custom exercises
 cover the rest) and live sync to an iPhone (needs the batch 4 companion app).
+
+## Batch 4 scope (PR #6)
+
+iPhone companion app (receives the watch's results; Today, Trends with compare, Body, Labs, Food logging to Health,
+Settings), configurable home and lock screen widgets, and the coach: Claude with your own API key, tools over Margin's
+data, in-chat charts, calendar-aware plans with Add to Calendar, Coach / Data Nerd / Guardian personalities, Fast /
+Adaptive / Thinking modes, ghost mode and scheduled check-ins. Not done: importing clinical health records from Health
+(needs the clinical-records entitlement and a paid developer account; lab results are entered by hand instead) and a
+food database (meals are entered as energy and macros).

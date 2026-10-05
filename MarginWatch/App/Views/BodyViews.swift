@@ -56,6 +56,10 @@ struct BiologicalAgeCard: View {
     let estimate: BiologicalAgeEstimate
 
     var body: some View {
+        card.padding(8).glassCard(cornerRadius: 16, tint: .teal)
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text(String(format: "%.0f", estimate.estimate)).font(.system(size: 36, weight: .bold, design: .rounded))
@@ -86,6 +90,10 @@ struct TrendSection: View {
     let higherIsBetter: Bool?
 
     var body: some View {
+        card.padding(8).glassCard(cornerRadius: 16)
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 3) {
             SectionHeader(text: title)
             HStack(alignment: .firstTextBaseline) {

@@ -189,6 +189,8 @@ final class AppModel: ObservableObject {
 
     func onLaunch() async {
         log(.lifecycle, .info, "app launched (engine \(MarginCoreInfo.engineVersion))")
+        PhoneSync.shared.onRefreshRequest = { [weak self] in Task { await self?.sync(mode: .foreground) } }
+        PhoneSync.shared.activate()
         smartAlarm.ensureScheduled(lifestyle.smartAlarm)
         guard HealthService.isAvailable else {
             status = "Health data is not available on this device."
@@ -364,6 +366,7 @@ final class AppModel: ObservableObject {
             log(.query, .info, String(format: "\(mode.rawValue) sync complete: %ld day(s) in %.1f s", plan.items.count,
                                       Date().timeIntervalSince(started)))
             if mode == .foreground { await syncBiomarkers() }
+            forcePhoneSend = true
         } catch {
             let message = (error as? SyncFailure)?.description ?? error.localizedDescription
             runtime.lastSyncError = message
@@ -469,7 +472,13 @@ final class AppModel: ObservableObject {
         notifyIfNeeded(b)
         checkIns.update(brief: b, settings: lifestyle.checkIns, journaledToday: journal[b.day] != nil, now: now,
                         prefs: prefs)
+        PhoneSync.shared.send(PhonePayload(sentAt: now, brief: b, strength: strength, journal: journal, lifestyle: lifestyle),
+                              force: forcePhoneSend)
+        forcePhoneSend = false
     }
+
+    /// Set when something the phone should see at once happened (a workout ended, a sync finished).
+    private var forcePhoneSend = false
 
     func refreshHeartbeat() {
         widgetHeartbeat = SharedStore.loadHeartbeat()
@@ -580,6 +589,7 @@ final class AppModel: ObservableObject {
         }
         if empty { strength.sessions.remove(at: k) }
         saveStrength()
+        forcePhoneSend = true
         rescore()
     }
 
