@@ -120,6 +120,10 @@ final class Preferences {
         static let journal = "journal.v1"
         static let lastVitalsAlert = "lastElevatedVitalsAlertDay"
         static let runtime = "runtimeStatus.v1"
+        static let lifestyle = "lifestyle.v1"
+        static let statusPeriods = "statusPeriods.v1"
+        static let lastMorningSummary = "checkIn.lastMorningSummaryDay"
+        static let lastWeeklyReview = "checkIn.lastWeeklyReviewDay"
     }
 
     func loadSettings() -> UserSettings {
@@ -145,6 +149,36 @@ final class Preferences {
         var raw: [String: [String]] = [:]
         for (d, tags) in journal { raw[d.description] = tags.sorted() }
         defaults.set(raw, forKey: Key.journal)
+    }
+
+    func loadLifestyle() -> LifestyleSettings {
+        guard let data = defaults.data(forKey: Key.lifestyle),
+              let s = try? JSONDecoder().decode(LifestyleSettings.self, from: data) else { return LifestyleSettings() }
+        return s
+    }
+
+    func saveLifestyle(_ s: LifestyleSettings) {
+        if let data = try? JSONEncoder().encode(s) { defaults.set(data, forKey: Key.lifestyle) }
+    }
+
+    func loadStatusPeriods() -> [StatusPeriod] {
+        guard let data = defaults.data(forKey: Key.statusPeriods),
+              let s = try? JSONDecoder().decode([StatusPeriod].self, from: data) else { return [] }
+        return s
+    }
+
+    func saveStatusPeriods(_ s: [StatusPeriod]) {
+        if let data = try? JSONEncoder().encode(s) { defaults.set(data, forKey: Key.statusPeriods) }
+    }
+
+    var lastMorningSummaryDay: String? {
+        get { defaults.string(forKey: Key.lastMorningSummary) }
+        set { defaults.set(newValue, forKey: Key.lastMorningSummary) }
+    }
+
+    var lastWeeklyReviewDay: String? {
+        get { defaults.string(forKey: Key.lastWeeklyReview) }
+        set { defaults.set(newValue, forKey: Key.lastWeeklyReview) }
     }
 
     var lastVitalsAlertDay: String? {

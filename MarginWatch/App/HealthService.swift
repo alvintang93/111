@@ -25,6 +25,9 @@ final class HealthService {
             Self.quantity(.restingHeartRate),
             Self.quantity(.respiratoryRate),
             Self.quantity(.appleSleepingWristTemperature),
+            Self.quantity(.stepCount),
+            Self.quantity(.heartRateRecoveryOneMinute),
+            Self.quantity(.bodyMass),
             Self.sleepType,
             HKObjectType.workoutType(),
             HKObjectType.characteristicType(forIdentifier: .dateOfBirth)!,
@@ -101,6 +104,26 @@ final class HealthService {
 
     func wristTemperature(in interval: DateInterval) async throws -> [TimedValue] {
         try await values(.appleSleepingWristTemperature, unit: .degreeCelsius(), in: interval)
+    }
+
+    /// Step samples as recorded (value = steps over the sample interval).
+    func steps(in interval: DateInterval) async throws -> [TimedValue] {
+        try await values(.stepCount, unit: .count(), in: interval)
+    }
+
+    /// Apple's one-minute heart-rate recovery after workouts (bpm drop).
+    func heartRateRecovery(in interval: DateInterval) async throws -> [TimedValue] {
+        try await values(.heartRateRecoveryOneMinute, unit: Self.bpm, in: interval)
+    }
+
+    /// Most recent body mass in kg, if any (fluid target only).
+    func latestBodyMass() async throws -> Double? {
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: Self.quantity(.bodyMass))],
+            sortDescriptors: [SortDescriptor(\.endDate, order: .reverse)],
+            limit: 1
+        )
+        return try await descriptor.result(for: store).first?.quantity.doubleValue(for: .gramUnit(with: .kilo))
     }
 
     func workouts(in interval: DateInterval) async throws -> [WorkoutSample] {

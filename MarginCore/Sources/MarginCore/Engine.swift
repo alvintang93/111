@@ -15,6 +15,11 @@ public struct Engine {
     /// the overnight window has closed. Nil disables that check (history, tests).
     public let asOf: Date?
 
+    /// Marked periods (unwell, sore, travel).
+    public let statusPeriods: [StatusPeriod]
+    /// Days inside any status period: left out of every personal baseline.
+    let excluded: Set<Day>
+
     /// Contiguous days from the oldest record to today.
     let days: [Day]
     let records: [Day: DayRecord]
@@ -28,7 +33,8 @@ public struct Engine {
     let cache = Cache()
 
     public init(records input: [DayRecord], today: Day, settings: UserSettings,
-                calendar: Calendar, params: ModelParameters = .standard, asOf: Date? = nil) {
+                calendar: Calendar, params: ModelParameters = .standard, asOf: Date? = nil,
+                statusPeriods: [StatusPeriod] = []) {
         var map: [Day: DayRecord] = [:]
         for r in input where r.day <= today { map[r.day] = r }
         let first = map.keys.min() ?? today
@@ -59,6 +65,8 @@ public struct Engine {
             hrMaxSource = "Default 190 bpm (age unknown)"
         }
 
+        let excluded = Set(days.filter { d in statusPeriods.contains { $0.covers(d) } })
+        let paused = Set(days.filter { d in statusPeriods.contains { $0.kind.pausesLoad && $0.covers(d) } })
         let completed = Array(days.dropLast())
         let loads: [Double?] = completed.map { d in
             guard let r = map[d], r.coverageHours >= params.minCoverageHours else { return nil }
@@ -75,9 +83,11 @@ public struct Engine {
         self.hrMaxSource = hrMaxSource
         self.hrRestSource = hrRestSource
         self.asOf = asOf
+        self.statusPeriods = statusPeriods
+        self.excluded = excluded
         self.days = days
         self.records = map
-        self.loadPoints = LoadModel.run(days: completed, loads: loads, params: params)
+        self.loadPoints = LoadModel.run(days: completed, loads: loads, paused: paused, params: params)
     }
 
     func windows(at i: Int) -> DayWindows {
@@ -159,7 +169,7 @@ public struct Engine {
 
     func baselineValues(_ key: KeyPath<DayRecord, Double?>, before i: Int) -> [Double] {
         let lo = max(0, i - params.baselineWindowDays)
-        return days[lo..<i].compactMap { records[$0]?[keyPath: key] }
+        return days[lo..<i].filter { !excluded.contains($0) }.compactMap { records[$0]?[keyPath: key] }
     }
 
     func baseline(_ key: KeyPath<DayRecord, Double?>, before i: Int, floor: Double) -> RobustBaseline? {
@@ -292,7 +302,8 @@ public struct Engine {
             flags.append(.elevatedVitals)
         }
         if let b = hrvB {
-            let recent = days[max(0, i - params.hrvTrendDays + 1)...i].compactMap { records[$0]?.lnHRV }
+            let recent = days[max(0, i - params.hrvTrendDays + 1)...i].filter { !excluded.contains($0) || $0 == days[i] }
+                .compactMap { records[$0]?.lnHRV }
             if recent.count >= params.hrvTrendMinDays, let m = Stats.mean(recent),
                m < b.center - params.hrvTrendSWC * b.scale {
                 flags.append(.hrvTrendLow)
@@ -318,7 +329,7 @@ public struct Engine {
 
     func compositeHistory(before i: Int) -> [Double] {
         let lo = max(0, i - params.baselineWindowDays)
-        return (lo..<i).compactMap { composite(at: $0) }
+        return (lo..<i).filter { !excluded.contains(days[$0]) }.compactMap { composite(at: $0) }
     }
 
     /// Robust centre/scale of the person's own recent composites. Without this,
@@ -409,7 +420,7 @@ public struct Engine {
 
     // MARK: - Plan
 
-    func directive(for r: Recovery) -> (Directive, [String], [RuleCheck]) {
+    func directive(for r: Recovery, on day: Day? = nil) -> (Directive, [String], [RuleCheck]) {
         var trace: [RuleCheck] = []
         func check(_ rule: String, _ passed: Bool, _ detail: String) {
             trace.append(RuleCheck(rule: rule, passed: passed, detail: detail))
@@ -455,6 +466,7 @@ public struct Engine {
         // Asymmetric loss: training hard while fatigued costs more than an easy
         // day while fresh, so weak or conflicting evidence demotes "push".
         let spike = r.flags.contains(.loadSpike)
+        let blocking = StatusPeriod.kinds(on: day ?? today, in: statusPeriods).filter(\.blocksPush)
         let demotions: [(String, Bool, String, String)] = [
             ("Push needs full inputs and calibrated scale", r.status == .scored, r.status.rawValue,
              "Push demoted: \(r.statusDetail)"),
@@ -464,6 +476,9 @@ public struct Engine {
              "Push demoted: 7-day HRV trend below normal range."),
             ("Push blocked by load spike", !spike, "load spike: \(spike)", "Push demoted: acute load spike."),
             ("Push blocked by sleep debt", !debt, "sleep debt: \(debt)", "Push demoted: sleep debt."),
+            ("Push blocked while marked unwell or sore", blocking.isEmpty,
+             "status: \(blocking.map(\.rawValue).joined(separator: ", "))",
+             "Push is off while you're marked \(blocking.map(\.rawValue).joined(separator: " and "))."),
         ]
         for (rule, ok, detail, reason) in demotions {
             check(rule, ok, detail)
@@ -588,7 +603,7 @@ public struct Engine {
         var zs: [ComponentKind: [Double]] = [:]
         for k in start...todayIndex {
             let r = k == todayIndex ? todayRecovery : recovery(at: k)
-            let d = k == todayIndex ? todayDirective : directive(for: r).0
+            let d = k == todayIndex ? todayDirective : directive(for: r, on: days[k]).0
             directiveCounts[Directive.allCases.firstIndex(of: d)!] += 1
             statusCounts[ScoreStatus.allCases.firstIndex(of: r.status)!] += 1
             if let s = r.score {
@@ -623,8 +638,9 @@ public struct Engine {
         return out
     }
 
-    public func brief(journal: [Day: Set<String>] = [:], historyDays: Int = 14, generatedAt: Date = Date(),
-                      dataSyncedAt: Date? = nil) -> DailyBrief {
+    public func brief(journal: [Day: Set<String>] = [:], intake: [IntakeEntry] = [],
+                      lifestyle: LifestyleSettings = LifestyleSettings(), historyDays: Int = 14,
+                      generatedAt: Date = Date(), dataSyncedAt: Date? = nil) -> DailyBrief {
         let i = todayIndex
         let rec = recovery(at: i)
         let todayRecord = records[today]
@@ -659,11 +675,15 @@ public struct Engine {
         }
 
         let plan = plan(recovery: rec)
+        let sleep = sleepSummary(at: i)
+        let strain = strainSummary(at: i, plan: plan)
+        let stress = stressSummary(at: i)
+        let now = asOf ?? generatedAt
         return DailyBrief(
             day: today,
             generatedAt: generatedAt,
             recovery: rec,
-            sleep: sleepSummary(at: i),
+            sleep: sleep,
             load: load,
             plan: plan,
             history: history,
@@ -672,7 +692,14 @@ public struct Engine {
             hrMaxUsed: hrMax,
             hrRestUsed: hrRest,
             dataSyncedAt: dataSyncedAt,
-            audit: audit(todayRecovery: rec, todayDirective: plan.directive)
+            audit: audit(todayRecovery: rec, todayDirective: plan.directive),
+            strain: strain,
+            stress: stress,
+            energy: energySummary(at: i, recovery: rec, sleep: sleep, strain: strain, stress: stress, now: now),
+            intake: intakeSummary(at: i, entries: intake, lifestyle: lifestyle),
+            heartRateRecovery: heartRateRecoverySummary(at: i),
+            statuses: StatusPeriod.kinds(on: today, in: statusPeriods),
+            timelines: (max(0, i - 1)...i).map { timeline(at: $0, journal: journal, entries: intake) }
         )
     }
 }

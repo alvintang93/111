@@ -211,4 +211,14 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var dataSyncedAt: Date?
     /// Everything the diagnostics screen shows, produced by the same engine pass.
     public var audit: BriefAudit
+    // Added in engine 2.1. Optional so briefs saved by older versions still decode.
+    public var strain: StrainSummary?
+    public var stress: StressSummary?
+    public var energy: EnergySummary?
+    public var intake: IntakeSummary?
+    public var heartRateRecovery: HeartRateRecoverySummary?
+    /// Statuses covering today (unwell, sore, travel).
+    public var statuses: [StatusKind]?
+    /// Yesterday and today, oldest first.
+    public var timelines: [DayTimeline]?
 }

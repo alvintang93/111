@@ -2,7 +2,7 @@ import Foundation
 
 /// The HealthKit inputs Margin reads. Used for per-input statistics and diagnostics.
 public enum HealthInput: String, Codable, Sendable, CaseIterable {
-    case heartRate, hrv, restingHR, respiratoryRate, wristTemperature, sleep, workouts
+    case heartRate, hrv, restingHR, respiratoryRate, wristTemperature, sleep, workouts, steps, heartRateRecovery
 }
 
 /// What happened to the samples of one input for one day. Counts and dates
@@ -45,6 +45,10 @@ public struct PlausibilityLimits: Sendable, Equatable {
     /// Wide on purpose: accepts both absolute (~33-37 degC) and deviation-style
     /// (~-3...+3) values, because the stored form must be confirmed on device.
     public var wristTemperature: ClosedRange<Double> = -10...45
+    /// Steps per sample.
+    public var steps: ClosedRange<Double> = 0...100_000
+    /// Apple's one-minute heart-rate recovery (bpm drop).
+    public var heartRateRecovery: ClosedRange<Double> = 0...120
     public var maxSampleDuration: TimeInterval = 24 * 3600
     /// Samples starting more than this after the build time are "future".
     public var futureTolerance: TimeInterval = 60
@@ -189,6 +193,7 @@ public enum SourceFingerprint {
             (3, input.restingHR, limits.restingHR),
             (4, input.respiratoryRate, limits.respiratoryRate),
             (5, input.wristTemperature, limits.wristTemperature),
+            (7, input.heartRateRecovery, limits.heartRateRecovery),
         ]
         for (t, samples, range) in timed {
             tag(t)

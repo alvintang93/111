@@ -254,6 +254,26 @@ Margin only reads Health data and never modifies it. A time-zone change only aff
 
 ---
 
+## 11. DAILY SCORES AND LIFESTYLE (engine 2.1)
+
+After updating from engine 2.0, the cache is rebuilt once (schema 2 → 3), and Health asks again for the new types: Steps, Heart Rate Recovery and Body Mass. Grant them.
+
+| Check | Where | Expected |
+|---|---|---|
+| Cache rebuilt | Events | `cache discarded: schema 2 != 3; full rebuild from Health`, then a 120-day foreground plan |
+| Steps read | Diagnostics → Health access → Steps | `data seen` on days you wore the watch |
+| Strain | Load page | A number 0–100 after some heart-rate data today. "Provisional" until 28 days of load history |
+| Stress | Energy page | Hourly bars appear for hours you sat still for ≥ 10 min. No bars during a workout or while walking |
+| Energy | Energy page | Starts at wake. Drops after a workout, and rises slightly after calm rest |
+| HR recovery | Load page, bottom | After a workout with the Workout app, a 1-minute drop. Keep the watch on for 2 minutes after ending it |
+| Caffeine | Today → coffee button, then More → Caffeine & water | "In your body now" rises over 45 min. A cut-off time appears before bedtime |
+| Status | More → Status → Unwell | Today shows "Marked unwell · baselines paused". The directive is never Push |
+| Timeline | Today → list button | Sleep, wake, workouts, drinks and journal in time order |
+| Complications | Watch face → Edit | Strain, Energy, Stress and Sleep are listed alongside Readiness |
+| Check-ins | Settings → Check-ins | Morning summary arrives once after waking. The journal reminder fires at the set time unless today is already journaled |
+
+PASS: every row behaves as described. FAIL: any tile shows a value with yesterday's date after midnight, or the app crashes on any page.
+
 ## Results sheet
 
 | Date | Test | Status / score / recommendation | HRV nights x/14 | Bg requests / executions | Complication state seen | PASS/FAIL | Notes |

@@ -47,13 +47,29 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @Published var lifestyle: LifestyleSettings {
+        didSet {
+            guard lifestyle != oldValue else { return }
+            prefs.saveLifestyle(lifestyle)
+            rescore()
+        }
+    }
+    @Published private(set) var intake: [IntakeEntry]
+    @Published private(set) var statusPeriods: [StatusPeriod]
+    /// Latest body mass from Health (fluid target), unless overridden in settings.
+    @Published private(set) var healthBodyMassKg: Double?
+
     let syncParams = SyncParameters.standard
+    /// Logged caffeine and water older than this are dropped.
+    static let intakeRetentionDays = 120
 
     private let health = HealthService()
     private let recordStore = RecordStore()
     private let prefs = Preferences()
     private let eventStore = JSONFileStore<EventLog>(fileName: "event-log.json")
     private let decisionStore = JSONFileStore<DecisionLog>(fileName: "decision-log.json")
+    private let intakeStore = JSONFileStore<[IntakeEntry]>(fileName: "intake-log.json")
+    let checkIns = CheckInScheduler()
     private var eventLog: EventLog
     private(set) var records: [Day: DayRecord]
     private let osLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Margin", category: "pipeline")
@@ -65,7 +81,16 @@ final class AppModel: ObservableObject {
         settings = prefs.loadSettings()
         journal = prefs.loadJournal()
         runtime = prefs.loadRuntime()
+        lifestyle = prefs.loadLifestyle()
+        statusPeriods = prefs.loadStatusPeriods()
         var discardedLogs: [String] = []
+        switch intakeStore.load() {
+        case .loaded(let l): intake = l
+        case .empty: intake = []
+        case .discarded(let why):
+            intake = []
+            discardedLogs.append("intake log unreadable (\(why)); started a new one")
+        }
         let loadedLog: EventLog
         switch eventStore.load() {
         case .loaded(let l): loadedLog = l
@@ -267,13 +292,20 @@ final class AppModel: ObservableObject {
             var backfilled = 0, backfilledEmpty = 0
             for (k, item) in plan.items.enumerated() {
                 let hr: [HRSample]
+                let steps: [TimedValue]
                 do {
                     hr = try await health.heartRate(in: item.windows.union)
                 } catch {
                     throw SyncFailure.query(input: "heart rate (\(item.day))", underlying: error)
                 }
+                do {
+                    steps = try await health.steps(in: item.windows.union)
+                } catch {
+                    throw SyncFailure.query(input: "steps (\(item.day))", underlying: error)
+                }
                 var dayInput = small
                 dayInput.heartRate = hr
+                dayInput.steps = steps
                 let input = dayInput
                 let record = await Task.detached(priority: .userInitiated) {
                     DayRecordBuilder.build(day: item.day, windows: item.windows, input: input,
@@ -331,13 +363,17 @@ final class AppModel: ObservableObject {
         let rr = try await step("respiratory rate") { try await health.respiratoryRate(in: interval) }
         let temp = try await step("wrist temperature") { try await health.wristTemperature(in: interval) }
         let workouts = try await step("workouts") { try await health.workouts(in: interval) }
+        let hrr = try await step("HR recovery") { try await health.heartRateRecovery(in: interval) }
+        // Body mass only sets the fluid target; a failure must not abort the sync.
+        if let kg = try? await health.latestBodyMass() { healthBodyMassKg = kg }
         let days = Int((interval.duration / 86400).rounded())
-        log(.query, .info, "queried \(days) day(s): sleep \(sleep.segments.count), HRV \(hrv.count), resting HR \(rhr.count), resp \(rr.count), temp \(temp.count), workouts \(workouts.count)")
+        log(.query, .info, "queried \(days) day(s): sleep \(sleep.segments.count), HRV \(hrv.count), resting HR \(rhr.count), resp \(rr.count), temp \(temp.count), workouts \(workouts.count), HR recovery \(hrr.count)")
         if sleep.unknownValues > 0 {
             log(.query, .warning, "\(sleep.unknownValues) sleep sample(s) with an unrecognised value skipped")
         }
         return RawDayInput(sleep: sleep.segments, hrv: hrv, heartRate: [], restingHR: rhr,
-                           respiratoryRate: rr, wristTemperature: temp, workouts: workouts)
+                           respiratoryRate: rr, wristTemperature: temp, workouts: workouts,
+                           heartRateRecovery: hrr)
     }
 
     private func logBuild(item: SyncPlan.Item, record: DayRecord, previous: DayRecord?) {
@@ -379,8 +415,11 @@ final class AppModel: ObservableObject {
     func rescore() {
         let now = Date()
         let engine = Engine(records: Array(records.values), today: Day(now, calendar: calendar), settings: settings,
-                            calendar: calendar, asOf: now)
-        let b = engine.brief(journal: journal, generatedAt: now, dataSyncedAt: runtime.lastSuccessfulSync)
+                            calendar: calendar, asOf: now, statusPeriods: statusPeriods)
+        var effective = lifestyle
+        if effective.bodyMassKg == nil { effective.bodyMassKg = healthBodyMassKg }
+        let b = engine.brief(journal: journal, intake: intake, lifestyle: effective, generatedAt: now,
+                             dataSyncedAt: runtime.lastSuccessfulSync)
         brief = b
         if let error = SharedStore.saveBrief(b) {
             runtime.lastPersistError = "brief: \(error)"
@@ -402,6 +441,8 @@ final class AppModel: ObservableObject {
                 + "scale days \(r.calibration.compositeDays)/\(r.calibration.compositeDaysRequired)")
         widgetHeartbeat = SharedStore.loadHeartbeat()
         notifyIfNeeded(b)
+        checkIns.update(brief: b, settings: lifestyle.checkIns, journaledToday: journal[b.day] != nil, now: now,
+                        prefs: prefs)
     }
 
     func refreshHeartbeat() {
@@ -423,6 +464,66 @@ final class AppModel: ObservableObject {
             }
         }
         log(.notification, .info, "elevated-vitals notification requested for \(b.day)")
+    }
+
+    // MARK: - Caffeine and water
+
+    func addIntake(_ kind: IntakeKind, amount: Double, label: String = "", at date: Date = Date()) {
+        intake.append(IntakeEntry(date: date, kind: kind, amount: amount, label: label))
+        saveIntake()
+        log(.lifecycle, .info, "logged \(kind.rawValue) \(Int(amount))\(kind == .caffeine ? " mg" : " ml")")
+        rescore()
+    }
+
+    func removeIntake(_ id: UUID) {
+        intake.removeAll { $0.id == id }
+        saveIntake()
+        rescore()
+    }
+
+    private func saveIntake() {
+        let cutoff = Date().addingTimeInterval(-Double(Self.intakeRetentionDays) * 86400)
+        intake = intake.filter { $0.date >= cutoff }.sorted { $0.date < $1.date }
+        do {
+            try intakeStore.save(intake)
+        } catch {
+            log(.persist, .error, "intake log save failed: \(error)")
+        }
+    }
+
+    // MARK: - Status (unwell, sore, travel)
+
+    var activeStatus: StatusPeriod? {
+        statusPeriods.last { $0.covers(today) }
+    }
+
+    func startStatus(_ kind: StatusKind) {
+        // One status at a time: starting a new one ends the current one yesterday.
+        if let current = activeStatus { endStatus(current.id, rescoring: false) }
+        statusPeriods.append(StatusPeriod(kind: kind, start: today))
+        prefs.saveStatusPeriods(statusPeriods)
+        log(.lifecycle, .info, "status \(kind.rawValue) started \(today); these days leave the baselines")
+        rescore()
+    }
+
+    func endStatus(_ id: UUID, rescoring: Bool = true) {
+        guard let k = statusPeriods.firstIndex(where: { $0.id == id }) else { return }
+        let yesterday = today.adding(-1, calendar: calendar)
+        if statusPeriods[k].start > yesterday {
+            // Started today: ending it removes it.
+            statusPeriods.remove(at: k)
+        } else {
+            statusPeriods[k].end = yesterday
+        }
+        prefs.saveStatusPeriods(statusPeriods)
+        log(.lifecycle, .info, "status ended")
+        if rescoring { rescore() }
+    }
+
+    func deleteStatus(_ id: UUID) {
+        statusPeriods.removeAll { $0.id == id }
+        prefs.saveStatusPeriods(statusPeriods)
+        rescore()
     }
 
     // MARK: - Journal
