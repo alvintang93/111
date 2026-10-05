@@ -8,9 +8,9 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    BUNDLE_ID_PREFIX: com.alvintang93.margin      # CHANGE ME (reverse-DNS you own)
-    APP_GROUP_ID: group.com.alvintang93.margin    # CHANGE ME (must start with "group.")
-    DEVELOPMENT_TEAM: WX984S6PAY                    # CHANGE ME (Xcode > Settings > Accounts)
+    BUNDLE_ID_PREFIX: com.example.margin      # CHANGE ME (reverse-DNS you own)
+    APP_GROUP_ID: group.com.example.margin    # CHANGE ME (must start with "group.")
+    DEVELOPMENT_TEAM: ""                      # CHANGE ME (Xcode > Settings > Accounts)
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
