@@ -149,7 +149,7 @@ Branch `feature/health-metrics-timeline-routines` (PR #7, stacked on #6). Engine
 
 ## L. Full regression results
 
-- `swift test --package-path MarginCore`: **183 tests, 0 failures**. FixtureExport skips unless its environment variable is set.
+- `swift test --package-path MarginCore`: **184 tests: 183 passed, 1 skipped (FixtureExport, which runs only when its environment variable is set), 0 failures**.
 - `xcodebuild` MarginPhone scheme (iOS + embedded watch app + both widget extensions), Debug: **succeeded, 0 warnings in project sources**.
 - Product-language check: passed.
 
