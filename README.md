@@ -19,7 +19,7 @@ Sleep ─ also smart alarm (wakes you in a 10–30 min window at the first susta
 Complications ─ Readiness, Strain, Energy, Stress, Sleep (circular, corner, rectangular, inline)
 Check-ins ─ morning summary, evening journal, caffeine cut-off, weekly review (local notifications)
 iPhone ─ Today dashboard, trends and compare, body, labs, food logging, configurable home and lock screen widgets
-Coach ─ Claude with your own API key: tools over your data, charts, calendar-aware plans, personalities, Fast / Adaptive / Thinking, ghost mode
+Coach ─ Private (on-device Apple Intelligence, default, free, nothing leaves the phone) or Claude with your own API key: tools over your data, charts, calendar-aware plans, personalities, ghost mode
 ```
 
 ## What it does that a typical recovery app does not
@@ -31,7 +31,7 @@ Coach ─ Claude with your own API key: tools over your data, charts, calendar-a
 | Load-change limit | A load **ceiling**, solved in closed form, keeps ATL/CTL under your chosen limit (default 1.3). |
 | Evidence rules | "Recover" needs a strong signal or two that agree. "Push" needs full inputs and a calibrated scale. "Rest" needs elevated sleeping HR **and** elevated temperature or respiration. |
 | Journal statistics | Welch's t-test with Holm–Bonferroni across tags. Days you didn't journal are excluded, not counted as "no". |
-| Privacy | No account, no server, no subscription. Everything is computed on the watch. Health writes: strength workouts (watch) and meals you log (iPhone). The optional coach sends the data it looks up to Anthropic, only with your own API key. |
+| Privacy | No account, no server, no subscription. Everything is computed on the watch. Health writes: strength workouts (watch) and meals you log (iPhone). The default coach runs on the iPhone; only the optional Claude coach sends the data it looks up to Anthropic, with your own API key. |
 | Ultra 2 | Double tap triggers Refresh on watchOS 11+. Complications are tuned for the large display. |
 
 I have not benchmarked against Bevel, whose algorithms are proprietary, so

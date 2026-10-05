@@ -432,7 +432,13 @@ Calendar" on a proposed session.
 **Lab results** are entered by hand from your reports, with the report's own
 reference range. Margin supplies no reference ranges and makes no interpretation.
 
-**Coach.** Claude (`claude-opus-5-5`), called from the iPhone with your own
+**Coach engines.** The default is **Private (on-device)**: Apple's on-device
+language model (Apple Intelligence, iOS 26+, supported iPhones). It's free, needs no
+account, and no data leaves the iPhone. It uses the same tools, but they return short
+text summaries because its context window is small. When a long chat no longer fits,
+it starts over and says so. It's less capable than Claude. The optional engine is:
+
+**Claude.** Claude (`claude-opus-5-5`), called from the iPhone with your own
 Anthropic API key, which is stored only in the iPhone Keychain. The coach reads data
 only through tools that return numbers Margin already computed:
 - today's brief;

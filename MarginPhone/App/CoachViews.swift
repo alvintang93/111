@@ -17,11 +17,14 @@ struct CoachView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if !coach.hasKey {
+                if let problem = coach.engineProblem {
                     ContentUnavailableView {
-                        Label("Add your Claude API key", systemImage: "key")
+                        Label(coach.settings.engine == .claude ? "Add your Claude API key" : "Private coach unavailable",
+                              systemImage: coach.settings.engine == .claude ? "key" : "lock.shield")
                     } description: {
-                        Text("The coach uses Claude through your own Anthropic API key, stored only in this iPhone's Keychain. When you chat, the numbers the coach looks up (scores, trends, labs, calendar busy times) are sent to Anthropic to answer you. Nothing is sent until you add a key and ask something.")
+                        Text(coach.settings.engine == .claude
+                             ? "The Claude coach uses your own Anthropic API key, stored only in this iPhone's Keychain. When you chat, the numbers the coach looks up (scores, trends, labs, calendar busy times) are sent to Anthropic. Nothing is sent until you add a key and ask something."
+                             : "\(problem) The private coach runs on Apple Intelligence on this iPhone: free, and nothing leaves the device.")
                     } actions: {
                         NavigationLink("Open coach settings") { Form { CoachSettingsSection() } }
                     }
@@ -32,6 +35,9 @@ struct CoachView: View {
                                 if coach.conversation.items.isEmpty {
                                     Text(coach.ghostMode ? "Ghost mode: this chat isn't saved." : "Ask about your recovery, training, sleep or habits.")
                                         .font(.subheadline).foregroundStyle(.secondary)
+                                    Label(coach.settings.engine == .onDevice ? "Private: runs on this iPhone, nothing leaves it." : "Claude: data the coach looks up is sent to Anthropic.",
+                                          systemImage: coach.settings.engine == .onDevice ? "lock.shield" : "cloud")
+                                        .font(.caption).foregroundStyle(.secondary)
                                     ForEach(starters, id: \.self) { s in
                                         Button(s) { Task { await coach.send(s) } }.buttonStyle(.bordered)
                                     }
@@ -40,7 +46,7 @@ struct CoachView: View {
                                     ChatBubble(item: item).id(item.id)
                                 }
                                 if coach.isWorking {
-                                    HStack { ProgressView(); Text(coach.settings.mode == .thinking ? "Thinking…" : "Looking at your data…").foregroundStyle(.secondary) }
+                                    HStack { ProgressView(); Text(coach.settings.engine == .claude && coach.settings.mode == .thinking ? "Thinking…" : "Looking at your data…").foregroundStyle(.secondary) }
                                         .id("working")
                                 }
                             }
@@ -70,14 +76,19 @@ struct CoachView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
-                        Picker("Mode", selection: $coach.settings.mode) {
-                            ForEach(CoachMode.allCases) { Text($0.title).tag($0) }
+                        Picker("Coach", selection: $coach.settings.engine) {
+                            ForEach(CoachEngine.allCases) { Text($0.title).tag($0) }
+                        }
+                        if coach.settings.engine == .claude {
+                            Picker("Mode", selection: $coach.settings.mode) {
+                                ForEach(CoachMode.allCases) { Text($0.title).tag($0) }
+                            }
                         }
                         Picker("Personality", selection: $coach.settings.personality) {
                             ForEach(CoachPersonality.allCases) { Text($0.title).tag($0) }
                         }
                     } label: {
-                        Label(coach.settings.mode.title, systemImage: "slider.horizontal.3")
+                        Label(coach.settings.engine == .onDevice ? "Private" : coach.settings.mode.title, systemImage: "slider.horizontal.3")
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -204,31 +215,40 @@ struct CoachSettingsSection: View {
 
     var body: some View {
         Section {
-            if coach.hasKey {
-                LabeledContent("API key", value: "Saved in Keychain")
-                Button("Remove key", role: .destructive) { coach.setKey(nil) }
-            } else {
-                SecureField("Anthropic API key (sk-ant-…)", text: $key)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Button("Save key") {
-                    coach.setKey(key)
-                    key = ""
+            Picker("Coach", selection: $coach.settings.engine) {
+                ForEach(CoachEngine.allCases) { Text($0.title).tag($0) }
+            }
+            if coach.settings.engine == .claude {
+                if coach.hasKey {
+                    LabeledContent("API key", value: "Saved in Keychain")
+                    Button("Remove key", role: .destructive) { coach.setKey(nil) }
+                } else {
+                    SecureField("Anthropic API key (sk-ant-…)", text: $key)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Save key") {
+                        coach.setKey(key)
+                        key = ""
+                    }
+                    .disabled(key.isEmpty)
                 }
-                .disabled(key.isEmpty)
+                Picker("Mode", selection: $coach.settings.mode) {
+                    ForEach(CoachMode.allCases) { Text($0.title).tag($0) }
+                }
+            } else if let problem = coach.engineProblem {
+                Text(problem).font(.caption).foregroundStyle(.orange)
             }
             Picker("Personality", selection: $coach.settings.personality) {
                 ForEach(CoachPersonality.allCases) { Text($0.title).tag($0) }
             }
             Text(coach.settings.personality.blurb).font(.caption).foregroundStyle(.secondary)
-            Picker("Mode", selection: $coach.settings.mode) {
-                ForEach(CoachMode.allCases) { Text($0.title).tag($0) }
-            }
             Toggle("Share calendar event titles", isOn: $coach.settings.shareEventTitles)
         } header: {
             Text("Coach")
         } footer: {
-            Text("Fast answers quickly with less reasoning, Thinking reasons longest and shows a summary, and Adaptive sits between them. Without event titles, the coach only sees when you're busy.")
+            Text(coach.settings.engine == .onDevice
+                 ? "Private runs on Apple Intelligence on this iPhone. It's free and nothing leaves the device, but it's less capable than Claude and remembers less of a long chat."
+                 : "Claude is more capable but paid per use, and the data it looks up is sent to Anthropic. Fast answers quickly, Thinking reasons longest and shows a summary, Adaptive sits between. Without event titles, the coach only sees when you're busy.")
         }
         Section("Check-ins") {
             ForEach($coach.settings.checkIns) { $c in

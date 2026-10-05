@@ -54,12 +54,36 @@ enum CoachMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Where the coach runs.
+enum CoachEngine: String, Codable, CaseIterable, Identifiable {
+    /// Apple Intelligence on this iPhone: free, nothing leaves the device.
+    case onDevice
+    /// Claude through your own Anthropic API key (paid, more capable).
+    case claude
+
+    var id: String { rawValue }
+    var title: String { self == .onDevice ? "Private (on-device)" : "Claude (API key)" }
+}
+
 struct CoachSettings: Codable, Equatable {
+    var engine: CoachEngine = .onDevice
     var personality: CoachPersonality = .coach
     var mode: CoachMode = .adaptive
     /// Calendar event titles are sent only when on; otherwise just busy times.
     var shareEventTitles = false
     var checkIns: [CheckIn] = CheckIn.defaults
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = CoachSettings()
+        engine = (try? c.decodeIfPresent(CoachEngine.self, forKey: .engine)) ?? d.engine
+        personality = (try? c.decodeIfPresent(CoachPersonality.self, forKey: .personality)) ?? d.personality
+        mode = (try? c.decodeIfPresent(CoachMode.self, forKey: .mode)) ?? d.mode
+        shareEventTitles = (try? c.decodeIfPresent(Bool.self, forKey: .shareEventTitles)) ?? d.shareEventTitles
+        checkIns = (try? c.decodeIfPresent([CheckIn].self, forKey: .checkIns)) ?? d.checkIns
+    }
 }
 
 /// A scheduled nudge. Coach check-ins open the coach with a prompt when tapped.
@@ -138,7 +162,15 @@ final class CoachModel: ObservableObject {
     static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
     static let maxToolRounds = 8
 
-    @Published var settings: CoachSettings { didSet { saveSettings(); scheduleCheckIns() } }
+    @Published var settings: CoachSettings {
+        didSet {
+            saveSettings()
+            scheduleCheckIns()
+            if settings.personality != oldValue.personality || settings.engine != oldValue.engine { resetOnDevice() }
+        }
+    }
+    /// Held as AnyObject because the on-device coach needs iOS 26.
+    private var onDeviceCoach: AnyObject?
     @Published private(set) var conversation = Conversation()
     @Published private(set) var isWorking = false
     @Published var ghostMode = false
@@ -175,8 +207,31 @@ final class CoachModel: ObservableObject {
         hasKey = Keychain.read() != nil
     }
 
+    private func resetOnDevice() {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) { (onDeviceCoach as? OnDeviceCoach)?.reset() }
+        #endif
+    }
+
+    /// Nil when the selected engine can be used now; otherwise what to do about it.
+    var engineProblem: String? {
+        switch settings.engine {
+        case .claude: return hasKey ? nil : CoachError.noKey.localizedDescription
+        case .onDevice:
+            #if canImport(FoundationModels)
+            if #available(iOS 26.0, *) { return OnDeviceCoach.availability }
+            #endif
+            return "The private coach needs iOS 26 or later."
+        }
+    }
+
+    func appendToolItem(_ item: ChatItem) {
+        conversation.items.append(item)
+    }
+
     /// Ghost mode starts a fresh, unsaved conversation; leaving it restores the saved one.
     func setGhostMode(_ on: Bool) {
+        resetOnDevice()
         ghostMode = on
         if on {
             conversation = Conversation()
@@ -188,6 +243,7 @@ final class CoachModel: ObservableObject {
     }
 
     func newConversation() {
+        resetOnDevice()
         conversation = Conversation()
         saveConversation()
     }
@@ -311,6 +367,16 @@ final class CoachModel: ObservableObject {
 
     // MARK: Calendar
 
+    /// Busy times as short text, for the on-device coach.
+    func busyText(days: Int) async -> String {
+        let result = await busyTimes(days: days)
+        guard let items = result.array else { return result["error"]?.string ?? "Calendar unavailable." }
+        if items.isEmpty { return "No busy times in the next \(days) day(s)." }
+        return "Busy: " + items.map { i in
+            "\(i["start"]?.string ?? "?") to \(i["end"]?.string ?? "?")\(i["allDay"]?.bool == true ? " (all day)" : "")\(i["title"]?.string.map { " " + $0 } ?? "")"
+        }.joined(separator: "; ")
+    }
+
     private func busyTimes(days: Int) async -> JSONValue {
         do {
             guard try await calendar.requestFullAccessToEvents() else { return ["error": "Calendar access not granted."] }
@@ -347,6 +413,10 @@ final class CoachModel: ObservableObject {
     func send(_ text: String) async {
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty, !isWorking else { return }
+        if settings.engine == .onDevice {
+            await sendOnDevice(prompt)
+            return
+        }
         guard let key = Keychain.read() else {
             conversation.items.append(ChatItem(kind: .error, text: CoachError.noKey.localizedDescription))
             return
@@ -400,6 +470,35 @@ final class CoachModel: ObservableObject {
             // Drop this whole exchange (only appended messages, so the earlier history is untouched).
             conversation.messages.removeSubrange(checkpoint...)
         }
+    }
+
+    private func sendOnDevice(_ prompt: String) async {
+        #if !canImport(FoundationModels)
+        conversation.items.append(ChatItem(kind: .error, text: "The private coach needs iOS 26 or later."))
+        #else
+        guard #available(iOS 26.0, *) else {
+            conversation.items.append(ChatItem(kind: .error, text: "The private coach needs iOS 26 or later."))
+            return
+        }
+        if let problem = OnDeviceCoach.availability {
+            conversation.items.append(ChatItem(kind: .error, text: problem))
+            return
+        }
+        isWorking = true
+        defer { isWorking = false; saveConversation() }
+        conversation.items.append(ChatItem(kind: .user, text: prompt))
+        let coach = (onDeviceCoach as? OnDeviceCoach) ?? OnDeviceCoach()
+        onDeviceCoach = coach
+        let stamp = Date().formatted(.dateTime.weekday(.wide).day().month().year().hour().minute())
+        do {
+            let answer = try await coach.respond(to: "[\(stamp)] \(prompt)",
+                                                 instructions: OnDeviceCoach.instructions(personality: settings.personality))
+            conversation.items.append(ChatItem(kind: .assistant, text: answer))
+        } catch {
+            coach.reset()
+            conversation.items.append(ChatItem(kind: .error, text: "The on-device model couldn't answer: \(error.localizedDescription)"))
+        }
+        #endif
     }
 
     private func request(key: String) async throws -> JSONValue {
