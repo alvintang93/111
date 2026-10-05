@@ -274,6 +274,23 @@ After updating from engine 2.0, the cache is rebuilt once (schema 2 → 3), and 
 
 PASS: every row behaves as described. FAIL: any tile shows a value with yesterday's date after midnight, or the app crashes on any page.
 
+## 12. BODY, RUNNING, CYCLE, SMART ALARM (engine 2.2)
+
+The cache is rebuilt once again (schema 3 → 4). Health asks for VO2 max, blood pressure, body composition, glucose, nutrition, running metrics and cycle tracking. Grant what you use.
+
+| Check | Where | Expected |
+|---|---|---|
+| Biomarkers read | Events | `biomarkers: vo2Max N, ... runs N` after a foreground sync |
+| VO2 max / resting HR | Body page | The latest value matches Health → Heart. A trend appears once there are 4 readings over 14 days |
+| Biological age | Body page, top | Components add up to the estimate. Needs your date of birth in Health |
+| Body composition | Body page | Appears only if a scale or app writes body mass or body fat to Health |
+| Running form | More → Running form | After a Workout-app run: cadence, stride, vertical oscillation, ground contact, power |
+| Zones | Settings → Heart-rate zones | Changing a bound changes Load → zone minutes today, without a re-sync |
+| Cardio focus | Load page | Each recent workout labelled low aerobic, high aerobic or anaerobic |
+| Cycle | More → Cycle | With periods logged in Health: cycle day, predicted next start, HRV and temperature by phase |
+| Compare | More → Compare | Lines for two metrics and Spearman ρ once 3 days have both values |
+| Smart alarm | Settings → Smart alarm | "Armed for …" after enabling. At the window you get a haptic alarm on movement, or at the wake time. Keep a backup alarm for the first nights |
+
 ## Results sheet
 
 | Date | Test | Status / score / recommendation | HRV nights x/14 | Bg requests / executions | Complication state seen | PASS/FAIL | Notes |

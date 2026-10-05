@@ -100,6 +100,13 @@ struct SleepView: View {
                     MetricRow(label: "7-night debt", value: Fmt.hours(s.debtHours),
                               tint: s.debtHours >= 5 ? .orange : .primary)
                     MetricRow(label: "Tonight's need", value: Fmt.hours(s.tonightNeedHours), tint: .indigo)
+                    NavigationLink {
+                        SmartAlarmSettingsView(alarm: model.smartAlarm)
+                    } label: {
+                        Label(model.smartAlarm.scheduledWake.map { "Smart alarm \($0.formatted(date: .omitted, time: .shortened))" } ?? "Smart alarm off",
+                              systemImage: "alarm")
+                            .font(.footnote)
+                    }
                     Text("\(s.onset.formatted(date: .omitted, time: .shortened)) – \(s.wake.formatted(date: .omitted, time: .shortened))")
                         .font(.caption2).foregroundStyle(.secondary)
                 } else if model.brief?.isCurrent() == true {
@@ -181,6 +188,10 @@ struct LoadView: View {
                     .frame(height: 80)
                     Text("HRmax \(Int(b.hrMaxUsed)) · HRrest \(Int(b.hrRestUsed.rounded()))")
                         .font(.caption2).foregroundStyle(.secondary)
+                    if let focus = b.cardioFocus, !focus.workouts.isEmpty {
+                        SectionHeader(text: "Cardio focus, 28 days")
+                        CardioFocusSection(summary: focus)
+                    }
                     if let hrr = b.heartRateRecovery {
                         SectionHeader(text: "Heart-rate recovery")
                         HeartRateRecoverySection(summary: hrr)

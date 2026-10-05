@@ -51,6 +51,7 @@ final class AppModel: ObservableObject {
         didSet {
             guard lifestyle != oldValue else { return }
             prefs.saveLifestyle(lifestyle)
+            if lifestyle.smartAlarm != oldValue.smartAlarm { smartAlarm.reschedule(lifestyle.smartAlarm) }
             rescore()
         }
     }
@@ -58,6 +59,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var statusPeriods: [StatusPeriod]
     /// Latest body mass from Health (fluid target), unless overridden in settings.
     @Published private(set) var healthBodyMassKg: Double?
+    @Published private(set) var biomarkers: BiomarkerInput
+    let smartAlarm = SmartAlarmManager()
 
     let syncParams = SyncParameters.standard
     /// Logged caffeine and water older than this are dropped.
@@ -69,6 +72,7 @@ final class AppModel: ObservableObject {
     private let eventStore = JSONFileStore<EventLog>(fileName: "event-log.json")
     private let decisionStore = JSONFileStore<DecisionLog>(fileName: "decision-log.json")
     private let intakeStore = JSONFileStore<[IntakeEntry]>(fileName: "intake-log.json")
+    private let biomarkerStore = JSONFileStore<BiomarkerInput>(fileName: "biomarkers.json")
     let checkIns = CheckInScheduler()
     private var eventLog: EventLog
     private(set) var records: [Day: DayRecord]
@@ -84,6 +88,13 @@ final class AppModel: ObservableObject {
         lifestyle = prefs.loadLifestyle()
         statusPeriods = prefs.loadStatusPeriods()
         var discardedLogs: [String] = []
+        switch biomarkerStore.load() {
+        case .loaded(let b): biomarkers = b
+        case .empty: biomarkers = BiomarkerInput()
+        case .discarded(let why):
+            biomarkers = BiomarkerInput()
+            discardedLogs.append("biomarker cache unreadable (\(why)); will re-read from Health")
+        }
         switch intakeStore.load() {
         case .loaded(let l): intake = l
         case .empty: intake = []
@@ -166,6 +177,7 @@ final class AppModel: ObservableObject {
 
     func onLaunch() async {
         log(.lifecycle, .info, "app launched (engine \(MarginCoreInfo.engineVersion))")
+        smartAlarm.ensureScheduled(lifestyle.smartAlarm)
         guard HealthService.isAvailable else {
             status = "Health data is not available on this device."
             log(.auth, .error, "HealthKit not available on this device")
@@ -180,6 +192,7 @@ final class AppModel: ObservableObject {
     /// status query failed earlier) it is re-checked; the in-flight guard keeps
     /// this from racing the launch path's permission prompt.
     func onBecameActive() async {
+        smartAlarm.ensureScheduled(lifestyle.smartAlarm)
         if !authorizationResolved {
             await ensureAuthorization(interactive: true)
         }
@@ -338,6 +351,7 @@ final class AppModel: ObservableObject {
             status = nil
             log(.query, .info, String(format: "\(mode.rawValue) sync complete: %ld day(s) in %.1f s", plan.items.count,
                                       Date().timeIntervalSince(started)))
+            if mode == .foreground { await syncBiomarkers() }
         } catch {
             let message = (error as? SyncFailure)?.description ?? error.localizedDescription
             runtime.lastSyncError = message
@@ -418,8 +432,8 @@ final class AppModel: ObservableObject {
                             calendar: calendar, asOf: now, statusPeriods: statusPeriods)
         var effective = lifestyle
         if effective.bodyMassKg == nil { effective.bodyMassKg = healthBodyMassKg }
-        let b = engine.brief(journal: journal, intake: intake, lifestyle: effective, generatedAt: now,
-                             dataSyncedAt: runtime.lastSuccessfulSync)
+        let b = engine.brief(journal: journal, intake: intake, lifestyle: effective, biomarkers: biomarkers,
+                             generatedAt: now, dataSyncedAt: runtime.lastSuccessfulSync)
         brief = b
         if let error = SharedStore.saveBrief(b) {
             runtime.lastPersistError = "brief: \(error)"
@@ -464,6 +478,44 @@ final class AppModel: ObservableObject {
             }
         }
         log(.notification, .info, "elevated-vitals notification requested for \(b.day)")
+    }
+
+    // MARK: - Biomarkers
+
+    /// Reads the sparse long-range inputs (body composition, VO2 max, blood
+    /// pressure, glucose, nutrition, cycle, run form). A failure keeps the
+    /// previous values and never aborts the main sync.
+    private func syncBiomarkers() async {
+        let started = Date()
+        let cal = calendar
+        var next = biomarkers
+        func since(_ days: Int) -> DateInterval {
+            DateInterval(start: started.addingTimeInterval(-Double(days) * 86400), end: started.addingTimeInterval(60))
+        }
+        var failures: [String] = []
+        for kind in BiomarkerKind.allCases {
+            let days = (kind == .vo2Max || kind == .bodyFat || kind == .leanMass || kind == .bodyMass) ? 400 : 120
+            do { next[kind] = try await health.biomarker(kind, in: since(days)) } catch { failures.append(kind.rawValue) }
+        }
+        do { next.nutrition = try await health.nutrition(days: 30, calendar: cal) } catch { failures.append("nutrition") }
+        do { next.flow = try await health.menstrualFlow(in: since(400), calendar: cal) } catch { failures.append("cycle") }
+        // Run form: query only runs not already cached (Running = 37).
+        let runStarts = records.values.flatMap(\.workoutDetails).filter {
+            $0.activityType == 37 && $0.start >= started.addingTimeInterval(-60 * 86400)
+        }
+        var runs = Dictionary(next.runs.map { ($0.start, $0) }, uniquingKeysWith: { a, _ in a })
+        runs = runs.filter { $0.key >= started.addingTimeInterval(-60 * 86400) }
+        for w in runStarts where runs[w.start] == nil {
+            do { runs[w.start] = try await health.runMetrics(start: w.start, end: w.end) } catch { failures.append("run form") }
+        }
+        next.runs = runs.values.sorted { $0.start < $1.start }
+        next.fetchedAt = Date()
+        biomarkers = next
+        do { try biomarkerStore.save(next) } catch { log(.persist, .error, "biomarker cache save failed: \(error)") }
+        let counts = BiomarkerKind.allCases.map { "\($0.rawValue) \(next[$0].count)" }.joined(separator: ", ")
+        log(.query, failures.isEmpty ? .info : .warning,
+            "biomarkers: \(counts), nutrition days \(next.nutrition.count), flow days \(next.flow.count), runs \(next.runs.count)"
+                + (failures.isEmpty ? "" : "; failed: \(Set(failures).sorted().joined(separator: ", ")) (previous kept where read failed)"))
     }
 
     // MARK: - Caffeine and water

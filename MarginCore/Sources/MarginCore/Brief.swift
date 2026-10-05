@@ -165,7 +165,7 @@ public struct SleepSummary: Codable, Sendable, Equatable {
 public struct LoadSummary: Codable, Sendable, Equatable {
     public var todayLoad: Double?
     public var todayCoverageHours: Double
-    /// Minutes in heart-rate-reserve zones today: <50, 50-60, 60-70, 70-80, 80-90, 90+.
+    /// Minutes in zones 0-5 today (zone settings; default heart-rate reserve <50, 50-60, 60-70, 70-80, 80-90, 90+).
     public var todayZoneMinutes: [Double]
     public var atl: Double?
     public var ctl: Double?
@@ -221,4 +221,24 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var statuses: [StatusKind]?
     /// Yesterday and today, oldest first.
     public var timelines: [DayTimeline]?
+    // Added in engine 2.2.
+    public var biomarkers: BiomarkerSummary?
+    public var cardioFocus: CardioFocusSummary?
+    /// Last 30 days of each comparable metric.
+    public var series: [MetricSeries]?
+}
+
+public struct BiomarkerSummary: Codable, Sendable, Equatable {
+    public var bodyMass: Trend?
+    public var bodyFat: Trend?
+    public var leanMass: Trend?
+    public var vo2Max: Trend?
+    public var restingHR: Trend?
+    public var bloodPressure: BloodPressureSummary?
+    public var glucose: GlucoseSummary?
+    public var nutrition: NutritionSummary?
+    public var biologicalAge: BiologicalAgeEstimate?
+    public var cycle: CycleSummary?
+    public var running: RunningSummary?
+    public var fetchedAt: Date?
 }
