@@ -120,7 +120,7 @@ public struct CardioFocusSummary: Codable, Sendable, Equatable {
 // MARK: - Compare two metrics
 
 public enum CompareMetric: String, Codable, Sendable, CaseIterable {
-    case recovery, hrv, sleepingHR, sleepHours, sleepScore, load, stress, steps, caffeine, water
+    case recovery, hrv, sleepingHR, sleepHours, sleepScore, load, stress, steps, caffeine, water, respiratoryRate
 
     public var title: String {
         switch self {
@@ -134,6 +134,7 @@ public enum CompareMetric: String, Codable, Sendable, CaseIterable {
         case .steps: return "Steps"
         case .caffeine: return "Caffeine"
         case .water: return "Water"
+        case .respiratoryRate: return "Respiratory rate"
         }
     }
 }
@@ -251,5 +252,48 @@ public struct SmartAlarmDetector: Sendable {
         let activity = magnitudes.reduce(0) { $0 + abs($1 - 1) } / Double(magnitudes.count)
         consecutive = activity >= movementThreshold ? consecutive + 1 : 0
         return consecutive >= epochsNeeded
+    }
+}
+
+// MARK: - Pre-registered metric pairs
+
+/// One fixed relationship tested in your data. The pair list is fixed in
+/// advance (not mined), tests are corrected with Holm-Bonferroni, and nothing
+/// is reported below the minimum sample size.
+public struct MetricPairInsight: Codable, Sendable, Equatable, Identifiable {
+    public var a: CompareMetric
+    public var b: CompareMetric
+    /// b is taken this many days after a.
+    public var lagDays: Int
+    public var n: Int
+    public var rho: Double?
+    public var pValue: Double?
+    /// Significant after Holm correction across every tested pair.
+    public var significant: Bool
+    public var sufficient: Bool
+    public var id: String { "\(a.rawValue)-\(b.rawValue)-\(lagDays)" }
+}
+
+public enum MetricPairs {
+    public static let minimumN = 14
+    public static let alpha = 0.05
+    public static let pairs: [(CompareMetric, CompareMetric, Int)] = [
+        (.sleepHours, .hrv, 0), (.sleepHours, .sleepingHR, 0), (.load, .hrv, 1), (.load, .sleepingHR, 1),
+        (.respiratoryRate, .recovery, 0), (.caffeine, .sleepScore, 1), (.steps, .sleepScore, 1), (.load, .sleepScore, 1),
+    ]
+
+    public static func analyse(_ series: [MetricSeries], calendar: Calendar) -> [MetricPairInsight] {
+        var out: [MetricPairInsight] = []
+        for (a, b, lag) in pairs {
+            guard let sa = series.first(where: { $0.metric == a }), let sb = series.first(where: { $0.metric == b }) else { continue }
+            let p = Correlation.pairs(sa, sb, lagDays: lag, calendar: calendar)
+            let r = p.count >= minimumN ? Correlation.spearman(p.map(\.x), p.map(\.y)) : nil
+            out.append(MetricPairInsight(a: a, b: b, lagDays: lag, n: p.count, rho: r?.rho, pValue: r?.pValue, significant: false,
+                                         sufficient: r?.pValue != nil))
+        }
+        let tested = out.indices.filter { out[$0].sufficient }
+        let flags = Hypothesis.holm(tested.map { out[$0].pValue! }, alpha: alpha)
+        for (k, idx) in tested.enumerated() { out[idx].significant = flags[k] }
+        return out
     }
 }

@@ -210,6 +210,12 @@ extension TimelineItem.Kind {
         case .water: return "drop.fill"
         case .journal: return "book.closed"
         case .status: return "flag.fill"
+        case .recovery: return "heart.circle"
+        case .vitals: return "waveform.path.ecg"
+        case .strain: return "flame"
+        case .strength: return "dumbbell"
+        case .activity: return "figure.mixed.cardio"
+        case .measurement: return "scalemass"
         }
     }
 
@@ -222,6 +228,12 @@ extension TimelineItem.Kind {
         case .water: return .cyan
         case .journal: return .green
         case .status: return .pink
+        case .recovery: return .green
+        case .vitals: return .mint
+        case .strain: return .orange
+        case .strength: return .orange
+        case .activity: return .orange
+        case .measurement: return .teal
         }
     }
 }

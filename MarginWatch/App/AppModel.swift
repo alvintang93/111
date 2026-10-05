@@ -61,6 +61,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var healthBodyMassKg: Double?
     @Published private(set) var biomarkers: BiomarkerInput
     @Published private(set) var strength: StrengthLog
+    @Published private(set) var activityLog: ActivityLog
+    @Published private(set) var routines: RoutineLibrary
+    /// A live (non-strength) activity being recorded.
+    @Published private(set) var activeActivity: LoggedActivity?
     /// The session currently being logged (also kept in `strength` once it has sets).
     @Published private(set) var activeSessionID: UUID?
     let smartAlarm = SmartAlarmManager()
@@ -78,6 +82,8 @@ final class AppModel: ObservableObject {
     private let intakeStore = JSONFileStore<[IntakeEntry]>(fileName: "intake-log.json")
     private let biomarkerStore = JSONFileStore<BiomarkerInput>(fileName: "biomarkers.json")
     private let strengthStore = JSONFileStore<StrengthLog>(fileName: "strength-log.json")
+    private let activityStore = JSONFileStore<ActivityLog>(fileName: "activity-log.json")
+    private let routineStore = JSONFileStore<RoutineLibrary>(fileName: "routines.json")
     let checkIns = CheckInScheduler()
     private var eventLog: EventLog
     private(set) var records: [Day: DayRecord]
@@ -93,6 +99,20 @@ final class AppModel: ObservableObject {
         lifestyle = prefs.loadLifestyle()
         statusPeriods = prefs.loadStatusPeriods()
         var discardedLogs: [String] = []
+        switch activityStore.load() {
+        case .loaded(let l): activityLog = l
+        case .empty: activityLog = ActivityLog()
+        case .discarded(let why):
+            activityLog = ActivityLog()
+            discardedLogs.append("activity log unreadable (\(why)); started a new one")
+        }
+        switch routineStore.load() {
+        case .loaded(let l): routines = l
+        case .empty: routines = RoutineLibrary()
+        case .discarded(let why):
+            routines = RoutineLibrary()
+            discardedLogs.append("routines unreadable (\(why)); started a new library")
+        }
         switch strengthStore.load() {
         case .loaded(let l): strength = l
         case .empty: strength = StrengthLog()
@@ -448,7 +468,9 @@ final class AppModel: ObservableObject {
         var effective = lifestyle
         if effective.bodyMassKg == nil { effective.bodyMassKg = healthBodyMassKg }
         let b = engine.brief(journal: journal, intake: intake, lifestyle: effective, biomarkers: biomarkers,
-                             strength: strength, generatedAt: now, dataSyncedAt: runtime.lastSuccessfulSync)
+                             strength: strength, activityLog: activityLog,
+                             access: HealthAccess(authorized: authorizationResolved, lastSyncFailed: runtime.lastSyncError != nil),
+                             generatedAt: now, dataSyncedAt: runtime.lastSuccessfulSync)
         brief = b
         if let error = SharedStore.saveBrief(b) {
             runtime.lastPersistError = "brief: \(error)"
@@ -472,7 +494,8 @@ final class AppModel: ObservableObject {
         notifyIfNeeded(b)
         checkIns.update(brief: b, settings: lifestyle.checkIns, journaledToday: journal[b.day] != nil, now: now,
                         prefs: prefs)
-        PhoneSync.shared.send(PhonePayload(sentAt: now, brief: b, strength: strength, journal: journal, lifestyle: lifestyle),
+        PhoneSync.shared.send(PhonePayload(sentAt: now, brief: b, strength: strength, journal: journal, lifestyle: lifestyle,
+                                           routines: routines, activityLog: activityLog),
                               force: forcePhoneSend)
         forcePhoneSend = false
     }
@@ -518,6 +541,7 @@ final class AppModel: ObservableObject {
             let days = (kind == .vo2Max || kind == .bodyFat || kind == .leanMass || kind == .bodyMass) ? 400 : 120
             do { next[kind] = try await health.biomarker(kind, in: since(days)) } catch { failures.append(kind.rawValue) }
         }
+        next.failed = failures
         do { next.nutrition = try await health.nutrition(days: 30, calendar: cal) } catch { failures.append("nutrition") }
         do { next.flow = try await health.menstrualFlow(in: since(400), calendar: cal) } catch { failures.append("cycle") }
         // Run form: query only runs not already cached (Running = 37).
@@ -545,9 +569,10 @@ final class AppModel: ObservableObject {
         activeSessionID.flatMap { id in strength.sessions.first { $0.id == id } }
     }
 
-    func startStrengthWorkout() async {
-        guard activeSessionID == nil else { return }
-        let session = StrengthSession(start: Date())
+    /// Starts a strength workout, optionally from a routine.
+    func startStrengthWorkout(routine: Routine? = nil) async {
+        guard activeSessionID == nil, activeActivity == nil else { return }
+        let session = StrengthSession(start: Date(), routineID: routine?.id, routineName: routine?.name)
         strength.sessions.append(session)
         activeSessionID = session.id
         saveStrength()
@@ -583,6 +608,8 @@ final class AppModel: ObservableObject {
         do {
             let workout = try await strengthWorkout.end(save: save && !empty)
             strength.sessions[k].savedToHealth = workout != nil
+            // The Health UUID is the identity that keeps this session from showing twice after sync.
+            strength.sessions[k].healthWorkoutID = workout?.uuid
             log(.lifecycle, .info, "strength workout ended: \(strength.sessions[k].sets.count) set(s), \(workout != nil ? "saved to Health" : "not saved")")
         } catch {
             log(.lifecycle, .error, "strength workout save failed: \(error.localizedDescription)")
@@ -591,6 +618,15 @@ final class AppModel: ObservableObject {
         saveStrength()
         forcePhoneSend = true
         rescore()
+    }
+
+    /// Checks off a routine's timed activity item in the active session.
+    func completeRoutineItem(_ itemID: UUID) {
+        guard let id = activeSessionID, let k = strength.sessions.firstIndex(where: { $0.id == id }) else { return }
+        var done = strength.sessions[k].completedItems ?? []
+        if !done.contains(itemID) { done.append(itemID) }
+        strength.sessions[k].completedItems = done
+        saveStrength()
     }
 
     func deleteSession(_ id: UUID) {
@@ -611,6 +647,118 @@ final class AppModel: ObservableObject {
         } catch {
             log(.persist, .error, "strength log save failed: \(error)")
         }
+    }
+
+    // MARK: - Activities
+
+    /// Health workouts already in the cache around a time (for duplicate detection).
+    private func cachedWorkouts(near date: Date) -> [WorkoutDetail] {
+        let d = Day(date, calendar: calendar)
+        return [d.adding(-1, calendar: calendar), d, d.adding(1, calendar: calendar)].flatMap { records[$0]?.workoutDetails ?? [] }
+    }
+
+    func startActivity(type: UInt, indoor: Bool) async {
+        guard activeSessionID == nil, activeActivity == nil else { return }
+        let now = Date()
+        activeActivity = LoggedActivity(activityType: type, start: now, end: now, origin: .live)
+        do {
+            try await strengthWorkout.start(HKWorkoutActivityType(rawValue: type) ?? .other, indoor: indoor)
+            log(.lifecycle, .info, "live activity started: \(WorkoutType.name(type))")
+        } catch {
+            log(.lifecycle, .error, "live activity session could not start: \(error.localizedDescription)")
+        }
+    }
+
+    /// Ends the live activity. `save` writes the workout to Health; otherwise it is discarded everywhere.
+    func endActivity(save: Bool, rpe: Int?, notes: String) async {
+        guard var a = activeActivity else { return }
+        activeActivity = nil
+        a.end = Date()
+        a.rpe = rpe
+        a.notes = notes
+        do {
+            let workout = try await strengthWorkout.end(save: save)
+            a.healthWorkoutID = workout?.uuid
+        } catch {
+            log(.lifecycle, .error, "live activity save failed: \(error.localizedDescription)")
+        }
+        if save || a.healthWorkoutID != nil {
+            activityLog.activities.append(a)
+            saveActivities()
+        }
+        forcePhoneSend = true
+        rescore()
+    }
+
+    enum LogOutcome: Equatable {
+        case saved, linkedToExisting(String), loggedOnly, failed(String)
+    }
+
+    /// Logs an activity that already happened. If Health already has an
+    /// overlapping workout of the same kind, the log links to it instead of
+    /// writing a duplicate.
+    @discardableResult
+    func logPastActivity(type: UInt, start: Date, minutes: Int, rpe: Int?, notes: String, saveToHealth: Bool) async -> LogOutcome {
+        let end = start.addingTimeInterval(Double(minutes) * 60)
+        var a = LoggedActivity(activityType: type, start: start, end: end, rpe: rpe, notes: notes, origin: .manual)
+        var outcome = LogOutcome.loggedOnly
+        if let existing = ActivityReconciler.existingWorkout(type: type, start: start, end: end, in: cachedWorkouts(near: start)) {
+            a.healthWorkoutID = existing.healthID
+            outcome = .linkedToExisting(existing.source ?? "Health")
+            log(.lifecycle, .info, "logged activity linked to an existing Health workout (no duplicate written)")
+        } else if saveToHealth {
+            do {
+                a.healthWorkoutID = try await health.saveWorkout(type: type, start: start, end: end, rpe: rpe)
+                outcome = .saved
+            } catch {
+                outcome = .failed(error.localizedDescription)
+                log(.lifecycle, .error, "activity save to Health failed: \(error.localizedDescription)")
+            }
+        }
+        activityLog.activities.append(a)
+        saveActivities()
+        rescore()
+        return outcome
+    }
+
+    /// Removes Margin's log. With `alsoFromHealth`, also deletes the Health workout Margin saved for it.
+    func deleteActivity(_ id: UUID, alsoFromHealth: Bool) async {
+        guard let a = activityLog.activities.first(where: { $0.id == id }) else { return }
+        if alsoFromHealth, let hid = a.healthWorkoutID {
+            do { try await health.deleteWorkout(hid) } catch {
+                log(.lifecycle, .warning, "Health workout not deleted: \(error.localizedDescription)")
+            }
+        }
+        activityLog.activities.removeAll { $0.id == id }
+        saveActivities()
+        rescore()
+    }
+
+    private func saveActivities() {
+        do { try activityStore.save(activityLog) } catch { log(.persist, .error, "activity log save failed: \(error)") }
+    }
+
+    // MARK: - Routines
+
+    func saveRoutine(_ r: Routine) {
+        if routines.routine(r.id) == nil {
+            var new = routines.create(name: r.name.isEmpty ? "Routine" : r.name, items: r.items, at: Date())
+            new.notes = r.notes
+            routines.update(new, at: Date())
+        } else {
+            routines.update(r, at: Date())
+        }
+        saveRoutines()
+    }
+
+    func duplicateRoutine(_ id: UUID) { routines.duplicate(id, at: Date()); saveRoutines() }
+    func archiveRoutine(_ id: UUID, _ archived: Bool) { routines.setArchived(id, archived, at: Date()); saveRoutines() }
+    func deleteRoutine(_ id: UUID) { routines.delete(id); saveRoutines() }
+
+    private func saveRoutines() {
+        do { try routineStore.save(routines) } catch { log(.persist, .error, "routines save failed: \(error)") }
+        forcePhoneSend = true
+        rescore()
     }
 
     // MARK: - Caffeine and water

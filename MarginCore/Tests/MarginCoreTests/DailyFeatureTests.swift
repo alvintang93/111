@@ -301,7 +301,8 @@ final class DailyFeatureTests: XCTestCase {
         XCTAssertGreaterThan(energy.drainedByStrain, 0, "the 18:00 workout drains energy")
         let hrr = try XCTUnwrap(b.heartRateRecovery)
         XCTAssertEqual(hrr.latestDay, today)
-        XCTAssertEqual(b.timelines?.map(\.day), [today.adding(-1, calendar: cal), today])
+        // Engine 2.4 keeps a week of timelines (was yesterday and today).
+        XCTAssertEqual(b.timelines?.map(\.day), (0..<7).map { today.adding($0 - 6, calendar: cal) })
     }
 
     func testTimelineIsChronological() throws {
@@ -314,8 +315,12 @@ final class DailyFeatureTests: XCTestCase {
         let e = Engine(records: Array(h.records.values), today: today, settings: UserSettings(age: 35, sex: .male),
                        calendar: cal, asOf: now, statusPeriods: [StatusPeriod(kind: .travel, start: today)])
         let t = try XCTUnwrap(e.brief(journal: [today: ["Sauna"]], intake: entries, generatedAt: now).timelines?.last)
-        XCTAssertEqual(t.items.map(\.kind), [.sleep, .status, .wake, .caffeine, .water, .workout, .journal],
+        // The batch 1 events keep their relative order; engine 2.4 adds overnight readings, recovery and strain.
+        let original: [TimelineItem.Kind] = [.sleep, .status, .wake, .caffeine, .water, .workout, .journal]
+        XCTAssertEqual(t.items.map(\.kind).filter(original.contains), original,
                        "the night ending today started yesterday evening")
+        XCTAssertTrue(t.items.contains { $0.kind == .vitals })
+        XCTAssertTrue(t.items.contains { $0.kind == .recovery })
         XCTAssertEqual(t.items.map(\.date), t.items.map(\.date).sorted())
         XCTAssertEqual(t.items.first { $0.kind == .caffeine }?.title, "Espresso")
         XCTAssertEqual(t.items.first { $0.kind == .journal }?.detail, "Sauna")

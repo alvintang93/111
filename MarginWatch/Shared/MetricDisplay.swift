@@ -1,0 +1,164 @@
+import Charts
+import SwiftUI
+import MarginCore
+
+// Formatting for health metric reports, shared by the watch and iPhone apps.
+
+extension MetricDataState {
+    var label: String {
+        switch self {
+        case .available: return "Up to date"
+        case .stale: return "Stale"
+        case .insufficientHistory: return "Building baseline"
+        case .noMeasurement: return "No readings"
+        case .notAuthorized: return "Needs permission"
+        case .readFailed: return "Read failed"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .available: return .green
+        case .stale, .insufficientHistory: return .yellow
+        case .noMeasurement, .notAuthorized: return .gray
+        case .readFailed: return .orange
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .available: return "checkmark.circle"
+        case .stale: return "clock.badge.exclamationmark"
+        case .insufficientHistory: return "hourglass"
+        case .noMeasurement: return "circle.dashed"
+        case .notAuthorized: return "lock"
+        case .readFailed: return "exclamationmark.triangle"
+        }
+    }
+}
+
+extension HealthMetricKind {
+    var symbol: String {
+        switch self {
+        case .hrv: return "waveform.path.ecg"
+        case .sleepingHR, .restingHR: return "heart"
+        case .respiratoryRate: return "lungs"
+        case .wristTemperature: return "thermometer.medium"
+        case .spo2: return "drop.degreesign"
+        case .sleep: return "bed.double"
+        case .vo2Max: return "figure.run"
+        case .bodyMass, .bodyFat, .leanMass: return "scalemass"
+        case .hrRecovery: return "arrow.down.heart"
+        case .load: return "flame"
+        }
+    }
+
+    /// Unit shown after a value ("" for sleep, whose format already says h and m).
+    var unitLabel: String { self == .sleep ? "" : unit }
+
+    func format(_ v: Double?) -> String {
+        guard let v else { return "–" }
+        if self == .sleep {
+            let m = Int((v * 60).rounded())
+            return "\(m / 60)h \(String(format: "%02d", m % 60))m"
+        }
+        return String(format: "%.\(digits)f", v)
+    }
+
+    func formatSigned(_ v: Double?) -> String {
+        guard let v else { return "–" }
+        if self == .sleep { return String(format: "%+.0f min", v * 60) }
+        return String(format: "%+.\(max(digits, 1))f", v)
+    }
+}
+
+extension MetricReport {
+    /// One-line change from baseline (or from the previous reading for sporadic metrics).
+    var changeLine: String? {
+        if let d = deltaFromBaseline, let b = baseline {
+            if let p = deltaPercent {
+                return String(format: "%+.0f%% vs usual %@ %@", p, kind.format(b.center), kind.unitLabel)
+            }
+            return "\(kind.formatSigned(d)) \(kind.unitLabel) vs usual \(kind.format(b.center))"
+        }
+        if let c = current, let p = previous, !kind.hasRollingBaseline {
+            return "\(kind.formatSigned(c.value - p.value)) \(kind.unitLabel) since \(p.date.formatted(date: .abbreviated, time: .omitted))"
+        }
+        return nil
+    }
+
+    /// Colour of the change: green when favourable for this metric, orange when unfavourable and notable.
+    var changeColor: Color {
+        guard let better = kind.higherIsBetter else { return .secondary }
+        let signed: Double?
+        if let z { signed = z } else if let c = current, let p = previous { signed = c.value - p.value } else { signed = nil }
+        guard let s = signed, abs(s) >= (z != nil ? 1 : 0.0001) else { return .secondary }
+        return (s > 0) == better ? .green : .orange
+    }
+
+    /// Notable for Today: at least 1 robust SD from baseline.
+    var isNotable: Bool { (z.map { abs($0) >= 1 } ?? false) && current?.day != nil && state != .stale }
+}
+
+extension MetricPairInsight {
+    var title: String { "\(a.title) → \(b.title)\(lagDays == 1 ? " next day" : "")" }
+
+    var resultLine: String {
+        if n < MetricPairs.minimumN { return "\(n) of \(MetricPairs.minimumN) days with both values" }
+        guard sufficient, let rho, let p = pValue else { return "\(n) days, but one metric didn't vary, so there's nothing to test" }
+        return String(format: "ρ %+.2f · n %d · p %.3f%@", rho, n, p, significant ? " · significant" : "")
+    }
+}
+
+struct MetricPairRow: View {
+    let insight: MetricPairInsight
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(insight.title).font(.footnote.weight(.semibold))
+            Text(insight.resultLine).font(.caption2)
+                .foregroundStyle(insight.significant ? Color.green : Color.secondary)
+        }
+    }
+}
+
+struct MetricChart: View {
+    let report: MetricReport
+
+    var body: some View {
+        Chart {
+            if let b = report.baseline, b.scale > 0, report.kind != .hrv {
+                RectangleMark(yStart: .value("Low", b.center - b.scale), yEnd: .value("High", b.center + b.scale))
+                    .foregroundStyle(Color.green.opacity(0.12))
+            }
+            if let b = report.baseline {
+                RuleMark(y: .value("Usual", b.center)).foregroundStyle(Color.green.opacity(0.6)).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            }
+            ForEach(report.history) { o in
+                LineMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).foregroundStyle(Color.accentColor)
+                PointMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).symbolSize(8).foregroundStyle(Color.accentColor)
+            }
+        }
+        .chartYScale(domain: .automatic(includesZero: false))
+        .chartXAxis(.hidden)
+    }
+}
+
+struct ObservationRow: View {
+    let kind: HealthMetricKind
+    let obs: MetricObservation
+    let showTime: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(showTime ? obs.date.formatted(date: .abbreviated, time: .shortened) : obs.day.description)
+                    .font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(kind.format(obs.value)) \(kind.unitLabel)").font(.caption2).monospacedDigit()
+            }
+            if let n = obs.note { Text(n).font(.system(size: 9)).foregroundStyle(.secondary) }
+            if let s = obs.source, showTime { Text(s).font(.system(size: 9)).foregroundStyle(.secondary) }
+        }
+    }
+}

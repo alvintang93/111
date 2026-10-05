@@ -29,6 +29,7 @@ final class HealthService {
             Self.quantity(.heartRateRecoveryOneMinute),
             Self.quantity(.bodyMass),
             Self.quantity(.vo2Max),
+            Self.quantity(.oxygenSaturation),
             Self.quantity(.bloodPressureSystolic),
             Self.quantity(.bloodPressureDiastolic),
             Self.quantity(.bodyFatPercentage),
@@ -103,7 +104,8 @@ final class HealthService {
 
     private func values(_ id: HKQuantityTypeIdentifier, unit: HKUnit, in interval: DateInterval) async throws -> [TimedValue] {
         try await quantitySamples(id, in: interval).map {
-            TimedValue(start: $0.startDate, end: $0.endDate, value: $0.quantity.doubleValue(for: unit))
+            TimedValue(start: $0.startDate, end: $0.endDate, value: $0.quantity.doubleValue(for: unit),
+                       source: $0.sourceRevision.source.name)
         }
     }
 
@@ -163,6 +165,11 @@ final class HealthService {
         case .leanMass: return try await values(.leanBodyMass, unit: .gramUnit(with: .kilo), in: interval)
         case .bodyMass: return try await values(.bodyMass, unit: .gramUnit(with: .kilo), in: interval)
         case .glucose: return try await values(.bloodGlucose, unit: HKUnit(from: "mg/dL"), in: interval)
+        case .spo2:
+            // HealthKit's percent unit yields a 0-1 fraction; anything else is rejected, not rescaled.
+            return try await values(.oxygenSaturation, unit: .percent(), in: interval).compactMap { v in
+                HealthUnits.percent(fromFraction: v.value).map { TimedValue(start: v.start, end: v.end, value: $0, source: v.source) }
+            }
         }
     }
 
@@ -226,6 +233,30 @@ final class HealthService {
             speedMS: try await stat(.runningSpeed, HKUnit.meter().unitDivided(by: .second()), sum: false))
     }
 
+    // MARK: - Writes (only what the person logs)
+
+    /// Saves a workout the person entered after the fact. Returns its Health UUID.
+    func saveWorkout(type: UInt, start: Date, end: Date, rpe: Int?) async throws -> UUID {
+        let config = HKWorkoutConfiguration()
+        config.activityType = HKWorkoutActivityType(rawValue: type) ?? .other
+        let builder = HKWorkoutBuilder(healthStore: store, configuration: config, device: .local())
+        try await builder.beginCollection(at: start)
+        var metadata: [String: Any] = [HKMetadataKeyWasUserEntered: true]
+        if let rpe { metadata["MarginRPE"] = rpe }
+        try await builder.addMetadata(metadata)
+        try await builder.endCollection(at: end)
+        guard let workout = try await builder.finishWorkout() else {
+            throw NSError(domain: "Margin", code: 1, userInfo: [NSLocalizedDescriptionKey: "Health didn't return the saved workout."])
+        }
+        return workout.uuid
+    }
+
+    /// Deletes a workout Margin saved (HealthKit only allows deleting an app's own samples).
+    func deleteWorkout(_ id: UUID) async throws {
+        let descriptor = HKSampleQueryDescriptor(predicates: [.workout(HKQuery.predicateForObject(with: id))], sortDescriptors: [])
+        for w in try await descriptor.result(for: store) { try await store.delete(w) }
+    }
+
     func workouts(in interval: DateInterval) async throws -> [WorkoutSample] {
         let predicate = HKQuery.predicateForSamples(withStart: interval.start, end: interval.end, options: [])
         let descriptor = HKSampleQueryDescriptor(
@@ -233,7 +264,8 @@ final class HealthService {
             sortDescriptors: [SortDescriptor(\.startDate)]
         )
         return try await descriptor.result(for: store).map {
-            WorkoutSample(start: $0.startDate, end: $0.endDate, activityType: $0.workoutActivityType.rawValue)
+            WorkoutSample(start: $0.startDate, end: $0.endDate, activityType: $0.workoutActivityType.rawValue,
+                          healthID: $0.uuid, source: $0.sourceRevision.source.name)
         }
     }
 

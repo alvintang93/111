@@ -8,23 +8,31 @@ struct TodayView: View {
         ScrollView {
             VStack(spacing: 10) {
                 if let b = model.brief, b.isCurrent() {
+                    // How am I today?
                     StatusBanner(statuses: b.statuses ?? [])
                     RecoveryRing(score: b.recovery.score, band: b.recovery.band)
                         .frame(width: 118, height: 118)
                     DirectiveRow(plan: b.plan)
+                    StatusBadge(recovery: b.recovery)
                     TileGrid(brief: b)
-                    QuickLogRow()
+                    // What is my body doing?
+                    if let reports = b.healthMetrics { BodyDeviationsView(reports: reports) }
+                    // How loaded am I?
+                    SectionHeader(text: "Load")
                     LoadTargetBar(load: b.load.todayLoad, low: b.plan.targetLow, high: b.plan.targetHigh)
                     if !b.recovery.flags.isEmpty {
                         FlagList(flags: b.recovery.flags)
                     }
+                    // What have I done today?
+                    TodaySoFar(brief: b)
+                    QuickLogRow()
+                    // What should I do next?
                     ForEach(b.plan.reasons, id: \.self) { reason in
                         Text(reason)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    StatusBadge(recovery: b.recovery)
                 } else {
                     EmptyState()
                 }

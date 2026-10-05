@@ -219,7 +219,7 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var heartRateRecovery: HeartRateRecoverySummary?
     /// Statuses covering today (unwell, sore, travel).
     public var statuses: [StatusKind]?
-    /// Yesterday and today, oldest first.
+    /// The last 7 days, oldest first.
     public var timelines: [DayTimeline]?
     // Added in engine 2.2.
     public var biomarkers: BiomarkerSummary?
@@ -228,6 +228,12 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var series: [MetricSeries]?
     // Added in engine 2.3.
     public var strength: StrengthSummary?
+    // Added in engine 2.4.
+    public var healthMetrics: [MetricReport]?
+    /// Activities of the last 14 days, merged across Health and Margin, oldest first.
+    public var activities: [ActivityEntry]?
+    /// Fixed metric pairs over the last 60 days (Spearman, Holm-corrected).
+    public var metricInsights: [MetricPairInsight]?
 }
 
 public struct BiomarkerSummary: Codable, Sendable, Equatable {

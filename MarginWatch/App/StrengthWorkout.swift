@@ -23,11 +23,16 @@ final class StrengthWorkoutManager: NSObject, ObservableObject {
         self.store = store
     }
 
-    func start() async throws {
+    /// The HealthKit activity type of the running session.
+    @Published private(set) var activityType: HKWorkoutActivityType = .traditionalStrengthTraining
+
+    /// Starts a live workout session of any HealthKit activity type (strength by default).
+    func start(_ type: HKWorkoutActivityType = .traditionalStrengthTraining, indoor: Bool = true) async throws {
         guard !isRunning else { return }
         let config = HKWorkoutConfiguration()
-        config.activityType = .traditionalStrengthTraining
-        config.locationType = .indoor
+        config.activityType = type
+        config.locationType = indoor ? .indoor : .outdoor
+        activityType = type
         let s = try HKWorkoutSession(healthStore: store, configuration: config)
         let b = s.associatedWorkoutBuilder()
         b.dataSource = HKLiveWorkoutDataSource(healthStore: store, workoutConfiguration: config)

@@ -269,6 +269,7 @@ struct PhoneTrendsView: View {
                             .chartYScale(domain: .automatic(includesZero: false))
                             .frame(height: 100)
                         }
+                        if let ins = brief.metricInsights, !ins.isEmpty { PhoneInsightsCard(insights: ins) }
                         Card(title: "Compare") {
                             HStack {
                                 Picker("First", selection: $a) { ForEach(CompareMetric.allCases, id: \.self) { Text($0.title).tag($0) } }
@@ -325,6 +326,7 @@ struct PhoneBodyView: View {
     var body: some View {
         NavigationStack {
             List {
+                PhoneHealthSection()
                 if let bio = model.brief?.biomarkers {
                     if let age = bio.biologicalAge {
                         Section("Biological age") {
@@ -371,6 +373,8 @@ struct PhoneBodyView: View {
                     }
                 }
                 Section {
+                    NavigationLink { PhoneActivitiesView() } label: { Label("Activities", systemImage: "figure.mixed.cardio") }
+                    NavigationLink { PhoneRoutinesView() } label: { Label("Routines", systemImage: "list.bullet.clipboard") }
                     NavigationLink { LabsView() } label: { Label("Lab results", systemImage: "testtube.2") }
                     NavigationLink { FoodLogView() } label: { Label("Log food", systemImage: "fork.knife") }
                 }

@@ -32,13 +32,30 @@ public struct StrengthSession: Codable, Sendable, Equatable, Identifiable {
     public var sets: [StrengthSet]
     /// True once the workout was saved to Health.
     public var savedToHealth: Bool
+    /// UUID of the Health workout saved for this session (identity for reconciliation).
+    public var healthWorkoutID: UUID?
+    /// The routine this session was started from, if any.
+    public var routineID: UUID?
+    public var routineName: String?
+    public var rpe: Int?
+    public var notes: String?
+    /// Routine activity items checked off in this session.
+    public var completedItems: [UUID]?
 
-    public init(id: UUID = UUID(), start: Date, end: Date? = nil, sets: [StrengthSet] = [], savedToHealth: Bool = false) {
+    public init(id: UUID = UUID(), start: Date, end: Date? = nil, sets: [StrengthSet] = [], savedToHealth: Bool = false,
+                healthWorkoutID: UUID? = nil, routineID: UUID? = nil, routineName: String? = nil, rpe: Int? = nil,
+                notes: String? = nil, completedItems: [UUID]? = nil) {
         self.id = id
         self.start = start
         self.end = end
         self.sets = sets
         self.savedToHealth = savedToHealth
+        self.healthWorkoutID = healthWorkoutID
+        self.routineID = routineID
+        self.routineName = routineName
+        self.rpe = rpe
+        self.notes = notes
+        self.completedItems = completedItems
     }
 }
 

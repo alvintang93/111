@@ -215,13 +215,60 @@ public struct StatusPeriod: Codable, Sendable, Equatable, Identifiable {
 public struct TimelineItem: Codable, Sendable, Equatable, Identifiable {
     public enum Kind: String, Codable, Sendable {
         case sleep, wake, workout, caffeine, water, journal, status
+        case recovery, vitals, strain, strength, activity, measurement
     }
 
+    /// Stable identity derived from the underlying record (Health UUID, Margin
+    /// UUID or day + type), so re-syncs never create duplicate events.
+    public var id: String
     public var date: Date
     public var kind: Kind
     public var title: String
     public var detail: String
-    public var id: String { "\(kind.rawValue)-\(date.timeIntervalSinceReferenceDate)-\(title)" }
+    /// Where the event comes from: a Health source name, "Margin", or both.
+    public var source: String?
+
+    public init(id: String, date: Date, kind: Kind, title: String, detail: String, source: String? = nil) {
+        self.id = id
+        self.date = date
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+        self.source = source
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decode(Date.self, forKey: .date)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        title = try c.decode(String.self, forKey: .title)
+        detail = try c.decode(String.self, forKey: .detail)
+        source = try c.decodeIfPresent(String.self, forKey: .source)
+        // Briefs saved before engine 2.4 had no stored id.
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? "\(kind.rawValue)-\(date.timeIntervalSinceReferenceDate)-\(title)"
+    }
+
+    /// Display order for events at the same instant.
+    var order: Int {
+        switch self.kind {
+        case .sleep: return 0
+        case .wake: return 1
+        case .vitals: return 2
+        case .recovery: return 3
+        case .status: return 4
+        case .measurement: return 5
+        case .workout, .strength, .activity: return 6
+        case .strain: return 7
+        case .caffeine, .water: return 8
+        case .journal: return 9
+        }
+    }
+
+    public static func ordered(_ items: [TimelineItem]) -> [TimelineItem] {
+        var seen = Set<String>()
+        return items.sorted { ($0.date, $0.order, $0.id) < ($1.date, $1.order, $1.id) }
+            .filter { seen.insert($0.id).inserted }
+    }
 }
 
 public struct DayTimeline: Codable, Sendable, Equatable, Identifiable {
