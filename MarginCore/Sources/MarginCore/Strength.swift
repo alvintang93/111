@@ -39,10 +39,12 @@ public struct StrengthSession: Codable, Sendable, Equatable, Identifiable {
     public var routineName: String?
     public var rpe: Int?
     public var notes: String?
+    /// Routine activity items checked off in this session.
+    public var completedItems: [UUID]?
 
     public init(id: UUID = UUID(), start: Date, end: Date? = nil, sets: [StrengthSet] = [], savedToHealth: Bool = false,
                 healthWorkoutID: UUID? = nil, routineID: UUID? = nil, routineName: String? = nil, rpe: Int? = nil,
-                notes: String? = nil) {
+                notes: String? = nil, completedItems: [UUID]? = nil) {
         self.id = id
         self.start = start
         self.end = end
@@ -53,6 +55,7 @@ public struct StrengthSession: Codable, Sendable, Equatable, Identifiable {
         self.routineName = routineName
         self.rpe = rpe
         self.notes = notes
+        self.completedItems = completedItems
     }
 }
 
