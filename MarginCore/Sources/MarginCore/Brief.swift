@@ -219,7 +219,7 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var heartRateRecovery: HeartRateRecoverySummary?
     /// Statuses covering today (unwell, sore, travel).
     public var statuses: [StatusKind]?
-    /// Yesterday and today, oldest first.
+    /// The last 7 days, oldest first.
     public var timelines: [DayTimeline]?
     // Added in engine 2.2.
     public var biomarkers: BiomarkerSummary?
