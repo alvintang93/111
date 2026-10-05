@@ -15,7 +15,7 @@ struct PhoneHealthSection: View {
                             Label(r.kind.title, systemImage: r.kind.symbol)
                             Spacer()
                             VStack(alignment: .trailing, spacing: 1) {
-                                Text(r.current.map { "\(r.kind.format($0.value)) \(r.kind.unit)" } ?? "–").monospacedDigit()
+                                Text(r.current.map { "\(r.kind.format($0.value)) \(r.kind.unitLabel)" } ?? "–").monospacedDigit()
                                 Text(r.changeLine ?? r.state.label).font(.caption2)
                                     .foregroundStyle(r.changeLine == nil ? r.state.color : r.changeColor).lineLimit(1)
                             }
@@ -39,7 +39,7 @@ struct PhoneMetricDetail: View {
                 Section {
                     HStack(alignment: .firstTextBaseline) {
                         Text(r.kind.format(r.current?.value)).font(.system(size: 44, weight: .bold, design: .rounded))
-                        if r.current != nil { Text(r.kind.unit).foregroundStyle(.secondary) }
+                        if r.current != nil { Text(r.kind.unitLabel).foregroundStyle(.secondary) }
                     }
                     if let c = r.current {
                         Text("\(c.date.formatted(date: .abbreviated, time: .shortened))\(c.source.map { " · \($0)" } ?? "")\(c.count.map { " · \($0) readings" } ?? "")")
@@ -56,7 +56,7 @@ struct PhoneMetricDetail: View {
                         ForEach(r.trends) { t in
                             LabeledContent("\(t.days) days",
                                            value: t.sufficient
-                                           ? "\(t.change.map { "\(r.kind.formatSigned($0)) \(r.kind.unit)" } ?? "–")\(t.slopePerWeek.map { " · \(r.kind.formatSigned($0))/wk" } ?? "")"
+                                           ? "\(t.change.map { "\(r.kind.formatSigned($0)) \(r.kind.unitLabel)" } ?? "–")\(t.slopePerWeek.map { " · \(r.kind.formatSigned($0))/wk" } ?? "")"
                                            : "\(t.n) of \(MetricMath.minimumCount(days: t.days, sporadic: !r.kind.hasRollingBaseline)) readings")
                         }
                     }

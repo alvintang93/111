@@ -42,7 +42,7 @@ struct MetricRowCard: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(report.kind.format(report.current?.value)).font(.title3.bold()).monospacedDigit()
-                if report.current != nil { Text(report.kind.unit).font(.caption2).foregroundStyle(.secondary) }
+                if report.current != nil { Text(report.kind.unitLabel).font(.caption2).foregroundStyle(.secondary) }
                 Spacer()
             }
             Text(report.changeLine ?? report.state.label)
@@ -103,7 +103,7 @@ struct MetricHeader: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(report.kind.format(report.current?.value)).font(.system(size: 34, weight: .bold, design: .rounded)).monospacedDigit()
-                if report.current != nil { Text(report.kind.unit).font(.footnote).foregroundStyle(.secondary) }
+                if report.current != nil { Text(report.kind.unitLabel).font(.footnote).foregroundStyle(.secondary) }
             }
             if let c = report.current {
                 Text("\(c.date.formatted(date: .abbreviated, time: .shortened))\(c.source.map { " · \($0)" } ?? "")\(c.count.map { " · \($0) reading\($0 == 1 ? "" : "s")" } ?? "")")
@@ -134,7 +134,7 @@ struct MetricTrends: View {
                 HStack {
                     Text("\(t.days) d").font(.caption2.weight(.semibold)).frame(width: 30, alignment: .leading)
                     if t.sufficient {
-                        Text(t.change.map { "\(report.kind.formatSigned($0)) \(report.kind.unit)" } ?? "–").font(.caption2).monospacedDigit()
+                        Text(t.change.map { "\(report.kind.formatSigned($0)) \(report.kind.unitLabel)" } ?? "–").font(.caption2).monospacedDigit()
                         Spacer()
                         Text(t.slopePerWeek.map { "\(report.kind.formatSigned($0))/wk" } ?? "").font(.caption2).foregroundStyle(.secondary)
                     } else {

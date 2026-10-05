@@ -53,6 +53,9 @@ extension HealthMetricKind {
         }
     }
 
+    /// Unit shown after a value ("" for sleep, whose format already says h and m).
+    var unitLabel: String { self == .sleep ? "" : unit }
+
     func format(_ v: Double?) -> String {
         guard let v else { return "–" }
         if self == .sleep {
@@ -74,12 +77,12 @@ extension MetricReport {
     var changeLine: String? {
         if let d = deltaFromBaseline, let b = baseline {
             if let p = deltaPercent {
-                return String(format: "%+.0f%% vs usual %@ %@", p, kind.format(b.center), kind.unit)
+                return String(format: "%+.0f%% vs usual %@ %@", p, kind.format(b.center), kind.unitLabel)
             }
-            return "\(kind.formatSigned(d)) \(kind.unit) vs usual \(kind.format(b.center))"
+            return "\(kind.formatSigned(d)) \(kind.unitLabel) vs usual \(kind.format(b.center))"
         }
         if let c = current, let p = previous, !kind.hasRollingBaseline {
-            return "\(kind.formatSigned(c.value - p.value)) \(kind.unit) since \(p.date.formatted(date: .abbreviated, time: .omitted))"
+            return "\(kind.formatSigned(c.value - p.value)) \(kind.unitLabel) since \(p.date.formatted(date: .abbreviated, time: .omitted))"
         }
         return nil
     }
@@ -101,7 +104,8 @@ extension MetricPairInsight {
     var title: String { "\(a.title) → \(b.title)\(lagDays == 1 ? " next day" : "")" }
 
     var resultLine: String {
-        guard sufficient, let rho, let p = pValue else { return "\(n) of \(MetricPairs.minimumN) days with both values" }
+        if n < MetricPairs.minimumN { return "\(n) of \(MetricPairs.minimumN) days with both values" }
+        guard sufficient, let rho, let p = pValue else { return "\(n) days, but one metric didn't vary, so there's nothing to test" }
         return String(format: "ρ %+.2f · n %d · p %.3f%@", rho, n, p, significant ? " · significant" : "")
     }
 }
@@ -131,8 +135,8 @@ struct MetricChart: View {
                 RuleMark(y: .value("Usual", b.center)).foregroundStyle(Color.green.opacity(0.6)).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
             }
             ForEach(report.history) { o in
-                LineMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).foregroundStyle(.white.opacity(0.8))
-                PointMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).symbolSize(8).foregroundStyle(.white)
+                LineMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).foregroundStyle(Color.accentColor)
+                PointMark(x: .value("Date", o.date), y: .value(report.kind.title, o.value)).symbolSize(8).foregroundStyle(Color.accentColor)
             }
         }
         .chartYScale(domain: .automatic(includesZero: false))
@@ -151,7 +155,7 @@ struct ObservationRow: View {
                 Text(showTime ? obs.date.formatted(date: .abbreviated, time: .shortened) : obs.day.description)
                     .font(.caption2).foregroundStyle(.secondary)
                 Spacer()
-                Text("\(kind.format(obs.value)) \(kind.unit)").font(.caption2).monospacedDigit()
+                Text("\(kind.format(obs.value)) \(kind.unitLabel)").font(.caption2).monospacedDigit()
             }
             if let n = obs.note { Text(n).font(.system(size: 9)).foregroundStyle(.secondary) }
             if let s = obs.source, showTime { Text(s).font(.system(size: 9)).foregroundStyle(.secondary) }
