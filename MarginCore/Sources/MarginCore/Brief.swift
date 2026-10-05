@@ -230,6 +230,8 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var strength: StrengthSummary?
     // Added in engine 2.4.
     public var healthMetrics: [MetricReport]?
+    /// Activities of the last 14 days, merged across Health and Margin, oldest first.
+    public var activities: [ActivityEntry]?
 }
 
 public struct BiomarkerSummary: Codable, Sendable, Equatable {

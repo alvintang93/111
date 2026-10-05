@@ -411,18 +411,44 @@ struct StatusView: View {
 
 // MARK: - Timeline
 
+/// The last few events of today, linking to the full timeline.
+struct TodaySoFar: View {
+    let brief: DailyBrief
+
+    var body: some View {
+        let items = (brief.timelines?.last?.items ?? []).filter { $0.kind != .journal }
+        VStack(alignment: .leading, spacing: 3) {
+            SectionHeader(text: "Today so far")
+            if items.isEmpty { Text("Nothing recorded yet.").font(.caption2).foregroundStyle(.secondary) }
+            ForEach(items.suffix(3)) { item in
+                HStack(spacing: 4) {
+                    Image(systemName: item.kind.symbol).foregroundStyle(item.kind.color).font(.caption2)
+                    Text(item.title).font(.caption2).lineLimit(1)
+                    Spacer()
+                    Text(item.date.formatted(date: .omitted, time: .shortened)).font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            }
+            NavigationLink { DayTimelineView() } label: { Text("Full timeline").font(.caption2) }
+        }
+    }
+}
+
 struct DayTimelineView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var showYesterday = false
+    @State private var dayIndex: Int?
 
     var body: some View {
         List {
-            Picker("Day", selection: $showYesterday) {
-                Text("Today").tag(false)
-                Text("Yesterday").tag(true)
+            let timelines = model.brief?.timelines ?? []
+            if !timelines.isEmpty {
+                Picker("Day", selection: Binding(get: { dayIndex ?? timelines.count - 1 }, set: { dayIndex = $0 })) {
+                    ForEach(Array(timelines.enumerated()), id: \.offset) { k, t in
+                        Text(k == timelines.count - 1 ? "Today" : (k == timelines.count - 2 ? "Yesterday" : t.day.description)).tag(k)
+                    }
+                }
             }
-            if let timelines = model.brief?.timelines, model.brief?.isCurrent() == true,
-               let t = showYesterday ? (timelines.count > 1 ? timelines.first : nil) : timelines.last {
+            if model.brief?.isCurrent() == true, !timelines.isEmpty,
+               let t = Optional(timelines[min(dayIndex ?? timelines.count - 1, timelines.count - 1)]) {
                 if t.items.isEmpty {
                     Text("Nothing recorded yet.").font(.footnote)
                 }
@@ -437,6 +463,9 @@ struct DayTimelineView: View {
                             }
                             if !item.detail.isEmpty {
                                 Text(item.detail).font(.caption2).foregroundStyle(.secondary)
+                            }
+                            if let s = item.source {
+                                Text(s).font(.system(size: 9)).foregroundStyle(.tertiary)
                             }
                         }
                     }
@@ -457,6 +486,19 @@ struct PinnedMetricsView: View {
 
     var body: some View {
         List {
+            if !model.lifestyle.pinnedMetrics.isEmpty {
+                Section("Order") {
+                    ForEach(Array(model.lifestyle.pinnedMetrics.enumerated()), id: \.element) { k, m in
+                        HStack {
+                            Text(m.title).font(.footnote)
+                            Spacer()
+                            Button { movePinned(k, -1) } label: { Image(systemName: "chevron.up") }.buttonStyle(.plain).disabled(k == 0)
+                            Button { movePinned(k, 1) } label: { Image(systemName: "chevron.down") }.buttonStyle(.plain)
+                                .disabled(k == model.lifestyle.pinnedMetrics.count - 1)
+                        }
+                    }
+                }
+            }
             Section {
                 ForEach(DashboardMetric.allCases.filter { $0 != .recovery }, id: \.self) { m in
                     Toggle(m.title, isOn: Binding(
@@ -470,10 +512,18 @@ struct PinnedMetricsView: View {
                     .disabled(!model.lifestyle.pinnedMetrics.contains(m) && model.lifestyle.pinnedMetrics.count >= Self.maxPinned)
                 }
             } footer: {
-                Text("Up to \(Self.maxPinned) tiles under the recovery ring on Today, in the order you turn them on.")
+                Text("Up to \(Self.maxPinned) tiles under the recovery ring on Today. Reorder them above.")
             }
         }
         .navigationTitle("Today tiles")
+    }
+
+    private func movePinned(_ k: Int, _ offset: Int) {
+        var list = model.lifestyle.pinnedMetrics
+        let j = k + offset
+        guard list.indices.contains(k), list.indices.contains(j) else { return }
+        list.swapAt(k, j)
+        model.lifestyle.pinnedMetrics = list
     }
 }
 

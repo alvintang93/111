@@ -4,6 +4,8 @@ import MarginCore
 struct MoreView: View {
     var body: some View {
         List {
+            NavigationLink { LogActivityView() } label: { Label("Log activity", systemImage: "plus.circle") }
+            NavigationLink { RoutinesView() } label: { Label("Routines", systemImage: "list.bullet.clipboard") }
             NavigationLink { StrengthHomeView() } label: { Label("Strength", systemImage: "figure.strengthtraining.traditional") }
             NavigationLink { DayTimelineView() } label: { Label("Timeline", systemImage: "list.bullet.rectangle") }
             NavigationLink { IntakeView() } label: { Label("Caffeine & water", systemImage: "cup.and.saucer") }

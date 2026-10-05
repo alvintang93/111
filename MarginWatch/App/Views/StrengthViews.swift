@@ -90,6 +90,7 @@ struct ActiveStrengthView: View {
         ScrollView {
             VStack(spacing: 8) {
                 header
+                RoutineGuide { target in applyTarget(target) }
                 if let id = exerciseID, let ex = model.strength.exercise(id) {
                     Button { picking = true } label: {
                         HStack {
@@ -158,7 +159,32 @@ struct ActiveStrengthView: View {
             }
         }
         .onAppear {
-            if exerciseID == nil, let recent = model.strength.recentExerciseIDs(limit: 1).first { select(recent) }
+            if exerciseID == nil, let session = model.activeSession, let rid = session.routineID,
+               let r = model.routines.routine(rid), let next = RoutineRunner.progress(r, session: session, log: model.strength).next,
+               next.kind == .exercise {
+                applyTarget(next)
+            } else if exerciseID == nil, let recent = model.strength.recentExerciseIDs(limit: 1).first {
+                select(recent)
+            }
+        }
+        .onChange(of: model.activeSession?.sets.count) { _, _ in
+            // After a set, move to the routine's next planned set.
+            if let session = model.activeSession, let rid = session.routineID, let r = model.routines.routine(rid),
+               let next = RoutineRunner.progress(r, session: session, log: model.strength).next, next.kind == .exercise {
+                applyTarget(next)
+            }
+        }
+    }
+
+    private func applyTarget(_ t: RoutineTarget) {
+        guard let ex = t.exerciseID else { return }
+        exerciseID = ex
+        reps = t.reps
+        if let kg = t.weightKg {
+            weight = (unit.display(kg) / unit.step).rounded() * unit.step
+        } else {
+            select(ex)
+            reps = t.reps
         }
     }
 

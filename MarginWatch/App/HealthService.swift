@@ -233,6 +233,30 @@ final class HealthService {
             speedMS: try await stat(.runningSpeed, HKUnit.meter().unitDivided(by: .second()), sum: false))
     }
 
+    // MARK: - Writes (only what the person logs)
+
+    /// Saves a workout the person entered after the fact. Returns its Health UUID.
+    func saveWorkout(type: UInt, start: Date, end: Date, rpe: Int?) async throws -> UUID {
+        let config = HKWorkoutConfiguration()
+        config.activityType = HKWorkoutActivityType(rawValue: type) ?? .other
+        let builder = HKWorkoutBuilder(healthStore: store, configuration: config, device: .local())
+        try await builder.beginCollection(at: start)
+        var metadata: [String: Any] = [HKMetadataKeyWasUserEntered: true]
+        if let rpe { metadata["MarginRPE"] = rpe }
+        try await builder.addMetadata(metadata)
+        try await builder.endCollection(at: end)
+        guard let workout = try await builder.finishWorkout() else {
+            throw NSError(domain: "Margin", code: 1, userInfo: [NSLocalizedDescriptionKey: "Health didn't return the saved workout."])
+        }
+        return workout.uuid
+    }
+
+    /// Deletes a workout Margin saved (HealthKit only allows deleting an app's own samples).
+    func deleteWorkout(_ id: UUID) async throws {
+        let descriptor = HKSampleQueryDescriptor(predicates: [.workout(HKQuery.predicateForObject(with: id))], sortDescriptors: [])
+        for w in try await descriptor.result(for: store) { try await store.delete(w) }
+    }
+
     func workouts(in interval: DateInterval) async throws -> [WorkoutSample] {
         let predicate = HKQuery.predicateForSamples(withStart: interval.start, end: interval.end, options: [])
         let descriptor = HKSampleQueryDescriptor(

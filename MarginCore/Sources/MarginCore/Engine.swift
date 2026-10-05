@@ -714,7 +714,8 @@ public struct Engine {
                                      bodyMassKg: lifestyle.bodyMassKg ?? biomarkers?.clean(.bodyMass, asOf: now).samples.last?.value ?? 70,
                                      pinnedExerciseID: lifestyle.pinnedLiftID)
             },
-            healthMetrics: healthMetrics(biomarkers: biomarkers, now: now, access: access)
+            healthMetrics: healthMetrics(biomarkers: biomarkers, now: now, access: access),
+            activities: (max(0, i - 13)...i).flatMap { activities(at: $0, strength: strength, activityLog: activityLog) }
         )
     }
 }

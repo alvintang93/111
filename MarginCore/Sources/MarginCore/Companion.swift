@@ -15,9 +15,11 @@ public struct PhonePayload: Codable, Sendable, Equatable {
     /// Journal by day (`yyyy-MM-dd` → tags).
     public var journal: [String: [String]]
     public var lifestyle: LifestyleSettings
+    public var routines: RoutineLibrary?
+    public var activityLog: ActivityLog?
 
     public init(sentAt: Date, brief: DailyBrief, strength: StrengthLog?, journal: [Day: Set<String>],
-                lifestyle: LifestyleSettings) {
+                lifestyle: LifestyleSettings, routines: RoutineLibrary? = nil, activityLog: ActivityLog? = nil) {
         self.version = Self.version
         self.engineVersion = MarginCoreInfo.engineVersion
         self.sentAt = sentAt
@@ -25,6 +27,8 @@ public struct PhonePayload: Codable, Sendable, Equatable {
         self.strength = strength
         self.journal = Dictionary(uniqueKeysWithValues: journal.map { ($0.key.description, $0.value.sorted()) })
         self.lifestyle = lifestyle
+        self.routines = routines
+        self.activityLog = activityLog
     }
 
     public enum DecodeResult: Equatable {

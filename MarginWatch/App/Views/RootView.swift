@@ -8,6 +8,7 @@ struct RootView: View {
         NavigationStack {
             TabView {
                 TodayView()
+                HealthMetricsView()
                 EnergyView()
                 DriversView()
                 SleepView()
