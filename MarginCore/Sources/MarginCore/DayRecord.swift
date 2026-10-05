@@ -132,7 +132,8 @@ public struct DayRecord: Codable, Sendable, Equatable {
     /// v4: per-workout time at heart rate (custom zones, cardio focus).
     /// v5: HRV readings with timestamps and sources, respiration sample count,
     /// workout Health UUIDs and sources (provenance; aggregates unchanged).
-    public static let schemaVersion = 5
+    /// v6: sleep stage timeline per night, heart-rate curve per workout.
+    public static let schemaVersion = 6
 
     public let day: Day
     public var sleep: SleepNight?

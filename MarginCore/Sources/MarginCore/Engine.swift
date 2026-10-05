@@ -715,8 +715,17 @@ public struct Engine {
                                      pinnedExerciseID: lifestyle.pinnedLiftID)
             },
             healthMetrics: healthMetrics(biomarkers: biomarkers, now: now, access: access),
-            activities: (max(0, i - 13)...i).flatMap { activities(at: $0, strength: strength, activityLog: activityLog) },
-            metricInsights: MetricPairs.analyse(compareSeries(intake: intake, lookback: 60), calendar: calendar)
+            activities: (max(0, i - 13)...i).flatMap { activities(at: $0, strength: strength, activityLog: activityLog, zones: lifestyle.zones) },
+            metricInsights: MetricPairs.analyse(compareSeries(intake: intake, lookback: 60), calendar: calendar),
+            explanation: RecoveryExplainer.explain(
+                today: rec,
+                previous: (max(0, i - 7)..<i).reversed().lazy.map { (self.days[$0], self.recovery(at: $0)) }.first { $0.1.score != nil },
+                plan: plan),
+            sleepHistory: (max(0, i - 13)...i).compactMap { k in
+                sleepSummary(at: k).map { s in
+                    SleepHistoryNight(day: days[k], summary: s, stages: records[days[k]]?.sleep?.stages ?? [])
+                }
+            }
         )
     }
 }

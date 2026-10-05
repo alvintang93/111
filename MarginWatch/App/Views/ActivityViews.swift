@@ -151,12 +151,16 @@ struct ActivityHistoryView: View {
             let entries = (model.brief?.activities ?? []).reversed()
             if entries.isEmpty { Text("No activities in the last 14 days.").font(.footnote) }
             ForEach(Array(entries)) { e in
+                NavigationLink {
+                    ScrollView { WorkoutAnalysisView(entry: e).padding(.horizontal, 4) }.navigationTitle("Workout")
+                } label: {
                 VStack(alignment: .leading, spacing: 1) {
                     Label(e.title, systemImage: ActivityIcon.symbol(e.activityType)).font(.footnote.weight(.semibold))
                     Text("\(e.start.formatted(date: .abbreviated, time: .shortened)) · \(Int(e.end.timeIntervalSince(e.start) / 60)) min")
                         .font(.caption2).foregroundStyle(.secondary)
                     Text(provenance(e)).font(.system(size: 10)).foregroundStyle(.secondary)
                     if let l = e.logged?.sessionLoad { Text(String(format: "Session load %.0f (RPE × min)", l)).font(.system(size: 10)) }
+                }
                 }
                 .swipeActions {
                     if let l = e.logged {

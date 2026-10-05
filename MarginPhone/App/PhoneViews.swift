@@ -102,6 +102,9 @@ struct PhoneTodayView: View {
                                 }
                             }
                         }
+                        if let x = b.explanation, b.recovery.score != nil {
+                            Card(title: "Why today") { ExplanationView(explanation: x) }
+                        }
                         if let e = b.energy {
                             Card(title: "Energy bank") {
                                 Chart(e.points) { p in
@@ -374,6 +377,10 @@ struct PhoneBodyView: View {
                 }
                 Section {
                     NavigationLink { PhoneActivitiesView() } label: { Label("Activities", systemImage: "figure.mixed.cardio") }
+                    NavigationLink {
+                        ScrollView { VStack(spacing: 10) { SleepHistoryList(nights: model.brief?.sleepHistory ?? []) }.padding() }
+                            .navigationTitle("Sleep history")
+                    } label: { Label("Sleep history", systemImage: "bed.double") }
                     NavigationLink { PhoneRoutinesView() } label: { Label("Routines", systemImage: "list.bullet.clipboard") }
                     NavigationLink { LabsView() } label: { Label("Lab results", systemImage: "testtube.2") }
                     NavigationLink { FoodLogView() } label: { Label("Log food", systemImage: "fork.knife") }

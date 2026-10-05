@@ -123,13 +123,21 @@ extension Engine {
     }
 
     /// Activities for the day, merged across Health and Margin's logs (see `ActivityReconciler`).
-    func activities(at i: Int, strength: StrengthLog?, activityLog: ActivityLog?) -> [ActivityEntry] {
+    func activities(at i: Int, strength: StrengthLog?, activityLog: ActivityLog?, zones: ZoneSettings = .standard) -> [ActivityEntry] {
         let act = activityWindow(at: i)
         let health = records[days[i]]?.workoutDetails ?? []
         let logged = (activityLog?.activities ?? []).filter { act.contains($0.start) }
         let sessions = (strength?.sessions ?? []).filter { act.contains($0.start) && !$0.sets.isEmpty }
+        let ref = eligibleCTL(throughIndex: i - 1)?.ctl ?? params.strainFallbackReference
         return ActivityReconciler.reconcile(health: health, logged: logged, strength: sessions,
-                                            exerciseName: { strength?.exercise($0)?.name })
+                                            exerciseName: { strength?.exercise($0)?.name }).map { e in
+            var e = e
+            e.analysis = e.health.map {
+                WorkoutAnalysis.make($0, hrRest: hrRest, hrMax: hrMax, sex: settings.sex, floorHRR: params.activityFloorHRR,
+                                     zones: zones, strainReference: ref)
+            }
+            return e
+        }
     }
 
     /// The day's chronological record. Every event has a stable id derived from
