@@ -708,7 +708,7 @@ public struct Engine {
             series: compareSeries(intake: intake),
             strength: strength.flatMap {
                 StrengthSummary.make(log: $0, now: now,
-                                     bodyMassKg: lifestyle.bodyMassKg ?? biomarkers?[.bodyMass].last?.value ?? 70,
+                                     bodyMassKg: lifestyle.bodyMassKg ?? biomarkers?.clean(.bodyMass, asOf: now).samples.last?.value ?? 70,
                                      pinnedExerciseID: lifestyle.pinnedLiftID)
             }
         )

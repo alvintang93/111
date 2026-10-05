@@ -5,11 +5,34 @@ public struct TimedValue: Codable, Sendable, Equatable {
     public let start: Date
     public let end: Date
     public let value: Double
+    /// HealthKit source name (e.g. "Alvin's Apple Watch"), for provenance only.
+    /// Never part of fingerprints, de-duplication or scoring.
+    public var source: String?
 
-    public init(start: Date, end: Date, value: Double) {
+    public init(start: Date, end: Date, value: Double, source: String? = nil) {
         self.start = start
         self.end = end
         self.value = value
+        self.source = source
+    }
+}
+
+/// One HRV reading kept with the day, so the displayed HRV can be traced to
+/// exactly the samples the recovery score used.
+public struct HRVReading: Codable, Sendable, Equatable, Identifiable {
+    public var date: Date
+    public var sdnnMs: Double
+    /// True when the reading falls in the window the score uses (main sleep
+    /// bout, or 20:00-10:00 without sleep). Only these form `lnHRV`.
+    public var usedByScore: Bool
+    public var source: String?
+    public var id: Date { date }
+
+    public init(date: Date, sdnnMs: Double, usedByScore: Bool, source: String? = nil) {
+        self.date = date
+        self.sdnnMs = sdnnMs
+        self.usedByScore = usedByScore
+        self.source = source
     }
 }
 
@@ -21,11 +44,17 @@ public struct WorkoutSample: Sendable, Equatable {
     public let end: Date
     /// `HKWorkoutActivityType.rawValue`.
     public let activityType: UInt
+    /// HealthKit object UUID: the stable identity used to reconcile Margin's
+    /// own logs with Health (see `ActivityReconciler`).
+    public var healthID: UUID?
+    public var source: String?
 
-    public init(start: Date, end: Date, activityType: UInt) {
+    public init(start: Date, end: Date, activityType: UInt, healthID: UUID? = nil, source: String? = nil) {
         self.start = start
         self.end = end
         self.activityType = activityType
+        self.healthID = healthID
+        self.source = source
     }
 }
 
@@ -101,7 +130,9 @@ public struct DayRecord: Codable, Sendable, Equatable {
     /// v3: hourly slices (stress, strain by hour, energy), workout details with
     /// heart-rate recovery, step totals.
     /// v4: per-workout time at heart rate (custom zones, cardio focus).
-    public static let schemaVersion = 4
+    /// v5: HRV readings with timestamps and sources, respiration sample count,
+    /// workout Health UUIDs and sources (provenance; aggregates unchanged).
+    public static let schemaVersion = 5
 
     public let day: Day
     public var sleep: SleepNight?
@@ -131,6 +162,9 @@ public struct DayRecord: Codable, Sendable, Equatable {
     public var workoutDetails: [WorkoutDetail]
     /// Steps in the activity window.
     public var steps: Double
+    /// Every accepted HRV reading in the day's fetch interval, oldest first.
+    public var hrvReadings: [HRVReading]
+    public var respiratorySampleCount: Int
 
     public var coverageHours: Double { activity.totalSeconds / 3600 }
 
@@ -159,7 +193,9 @@ public struct DayRecord: Codable, Sendable, Equatable {
                 sourceFingerprint: String? = nil,
                 hours: [HourSlice] = [],
                 workoutDetails: [WorkoutDetail] = [],
-                steps: Double = 0) {
+                steps: Double = 0,
+                hrvReadings: [HRVReading] = [],
+                respiratorySampleCount: Int = 0) {
         self.day = day
         self.sleep = sleep
         self.lnHRV = lnHRV
@@ -179,6 +215,8 @@ public struct DayRecord: Codable, Sendable, Equatable {
         self.hours = hours
         self.workoutDetails = workoutDetails
         self.steps = steps
+        self.hrvReadings = hrvReadings
+        self.respiratorySampleCount = respiratorySampleCount
     }
 }
 
@@ -297,7 +335,9 @@ public enum DayRecordBuilder {
                                           window: act, params: params),
             workoutDetails: WorkoutRecoveryAnalyzer.analyze(workouts: workoutsStarted, heartRate: hrIn,
                                                             appleRecovery: hrrIn, params: params),
-            steps: stepsInDay.reduce(0) { $0 + $1.value }
+            steps: stepsInDay.reduce(0) { $0 + $1.value },
+            hrvReadings: hrvIn.map { HRVReading(date: $0.start, sdnnMs: $0.value, usedByScore: inOvernight($0.start), source: $0.source) },
+            respiratorySampleCount: rr.count
         )
     }
 }

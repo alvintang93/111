@@ -10,8 +10,9 @@ extension Engine {
             let t = d.date(hour: 12, calendar: calendar)
             return TimedValue(start: t, end: t, value: v)
         }
-        let vo2 = TrendModel.fit(input[.vo2Max], asOf: now, windowDays: 365)
-        let bodyMass = TrendModel.fit(input[.bodyMass], asOf: now)
+        func clean(_ k: BiomarkerKind) -> [TimedValue] { input.clean(k, asOf: now).samples }
+        let vo2 = TrendModel.fit(clean(.vo2Max), asOf: now, windowDays: 365)
+        let bodyMass = TrendModel.fit(clean(.bodyMass), asOf: now)
         let massKg = lifestyle.bodyMassKg ?? bodyMass?.latest
 
         // Biological age needs an age; VO2 max older than a year is not used.
@@ -35,12 +36,12 @@ extension Engine {
 
         return BiomarkerSummary(
             bodyMass: bodyMass,
-            bodyFat: TrendModel.fit(input[.bodyFat], asOf: now),
-            leanMass: TrendModel.fit(input[.leanMass], asOf: now),
+            bodyFat: TrendModel.fit(clean(.bodyFat), asOf: now),
+            leanMass: TrendModel.fit(clean(.leanMass), asOf: now),
             vo2Max: vo2,
             restingHR: TrendModel.fit(rhr, asOf: now),
-            bloodPressure: BloodPressureSummary.make(systolic: input[.systolic], diastolic: input[.diastolic], asOf: now),
-            glucose: GlucoseSummary.make(input[.glucose], asOf: now, calendar: calendar),
+            bloodPressure: BloodPressureSummary.make(systolic: clean(.systolic), diastolic: clean(.diastolic), asOf: now),
+            glucose: GlucoseSummary.make(clean(.glucose), asOf: now, calendar: calendar),
             nutrition: NutritionSummary.make(input.nutrition, today: today, bodyMassKg: massKg, calendar: calendar),
             biologicalAge: bioAge,
             cycle: cycle,

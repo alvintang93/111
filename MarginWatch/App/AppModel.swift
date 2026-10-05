@@ -518,6 +518,7 @@ final class AppModel: ObservableObject {
             let days = (kind == .vo2Max || kind == .bodyFat || kind == .leanMass || kind == .bodyMass) ? 400 : 120
             do { next[kind] = try await health.biomarker(kind, in: since(days)) } catch { failures.append(kind.rawValue) }
         }
+        next.failed = failures
         do { next.nutrition = try await health.nutrition(days: 30, calendar: cal) } catch { failures.append("nutrition") }
         do { next.flow = try await health.menstrualFlow(in: since(400), calendar: cal) } catch { failures.append("cycle") }
         // Run form: query only runs not already cached (Running = 37).

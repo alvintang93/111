@@ -174,6 +174,9 @@ public struct WorkoutDetail: Codable, Sendable, Equatable, Identifiable {
     public var hr120: Double?
     /// Apple's one-minute heart-rate recovery for this workout, when Health has one.
     public var appleRecovery1: Double?
+    /// HealthKit workout UUID and source (identity and provenance).
+    public var healthID: UUID?
+    public var source: String?
     /// Seconds at each whole bpm during the workout (sparse), for time in zone with any zone settings.
     public var hrSeconds: [Int: Double]
 
@@ -231,11 +234,14 @@ public enum WorkoutRecoveryAnalyzer {
                                                      maxGap: params.maxSampleGap)
             var bins: [Int: Double] = [:]
             for (bpm, sec) in histogram.seconds.enumerated() where sec > 0 { bins[bpm] = sec }
-            return WorkoutDetail(start: w.start, end: w.end, activityType: w.activityType,
-                                 averageHR: Stats.mean(during), peakHR: during.max(), endHR: endHR,
-                                 hr60: nearest(to: w.end.addingTimeInterval(60), within: 15),
-                                 hr120: nearest(to: w.end.addingTimeInterval(120), within: 20),
-                                 appleRecovery1: apple, hrSeconds: bins)
+            var d = WorkoutDetail(start: w.start, end: w.end, activityType: w.activityType,
+                                  averageHR: Stats.mean(during), peakHR: during.max(), endHR: endHR,
+                                  hr60: nearest(to: w.end.addingTimeInterval(60), within: 15),
+                                  hr120: nearest(to: w.end.addingTimeInterval(120), within: 20),
+                                  appleRecovery1: apple, hrSeconds: bins)
+            d.healthID = w.healthID
+            d.source = w.source
+            return d
         }
     }
 }

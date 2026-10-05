@@ -13,6 +13,32 @@ public enum BiomarkerKind: String, Codable, Sendable, CaseIterable {
     case leanMass, bodyMass
     /// mg/dL
     case glucose
+    /// Oxygen saturation, percent (HealthKit stores a 0-1 fraction; the app converts).
+    case spo2
+
+    /// Accepted range in display units. Values outside are rejected and counted, never clamped.
+    public var plausibleRange: ClosedRange<Double> {
+        switch self {
+        case .vo2Max: return 10...90
+        case .systolic: return 60...260
+        case .diastolic: return 30...160
+        case .bodyFat: return 2...70
+        case .leanMass: return 15...200
+        case .bodyMass: return 20...350
+        case .glucose: return 20...600
+        case .spo2: return 50...100
+        }
+    }
+}
+
+/// HealthKit percent quantities are fractions (0.97 = 97 %).
+public enum HealthUnits {
+    /// Converts a HealthKit percent fraction to percent. Nil when the input is
+    /// not a valid fraction (such values are rejected, not rescaled).
+    public static func percent(fromFraction f: Double) -> Double? {
+        guard f.isFinite, (0...1).contains(f) else { return nil }
+        return f * 100
+    }
 }
 
 public struct NutritionDay: Codable, Sendable, Equatable, Identifiable {
@@ -91,20 +117,35 @@ public struct BiomarkerInput: Codable, Sendable, Equatable {
     public var flow: [FlowDay]
     public var runs: [RunMetrics]
     public var fetchedAt: Date?
+    /// Inputs whose last read failed (previous values kept). Distinguishes a
+    /// failed query from "no data".
+    public var failed: [String]?
 
     public init(series: [String: [TimedValue]] = [:], nutrition: [NutritionDay] = [], flow: [FlowDay] = [],
-                runs: [RunMetrics] = [], fetchedAt: Date? = nil) {
+                runs: [RunMetrics] = [], fetchedAt: Date? = nil, failed: [String]? = nil) {
         self.series = series
         self.nutrition = nutrition
         self.flow = flow
         self.runs = runs
         self.fetchedAt = fetchedAt
+        self.failed = failed
     }
 
+    /// Raw samples as cached. Use `clean(_:asOf:)` for anything shown to the user.
     public subscript(_ kind: BiomarkerKind) -> [TimedValue] {
         get { series[kind.rawValue] ?? [] }
         set { series[kind.rawValue] = newValue }
     }
+
+    /// Range-checked, de-duplicated, future-filtered samples, oldest first, with what was rejected.
+    public func clean(_ kind: BiomarkerKind, asOf: Date, limits: PlausibilityLimits = PlausibilityLimits()) -> (samples: [TimedValue], stats: InputStats) {
+        var stats = InputStats()
+        let out = Sanitizer.timed(self[kind], range: kind.plausibleRange, within: DateInterval(start: .distantPast, end: .distantFuture),
+                                  asOf: asOf, limits: limits, stats: &stats)
+        return (out, stats)
+    }
+
+    public func didFail(_ kind: BiomarkerKind) -> Bool { failed?.contains(kind.rawValue) == true }
 }
 
 // MARK: - Trends and projections
