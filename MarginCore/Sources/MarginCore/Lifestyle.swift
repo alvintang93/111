@@ -42,6 +42,8 @@ public struct LifestyleSettings: Codable, Sendable, Equatable {
     /// Tiles on the Today page, in order.
     public var pinnedMetrics: [DashboardMetric] = [.strain, .energy, .stress, .sleep]
     public var checkIns = CheckInSettings()
+    public var zones = ZoneSettings.standard
+    public var smartAlarm = SmartAlarmSettings()
 
     public init() {}
 
@@ -58,6 +60,8 @@ public struct LifestyleSettings: Codable, Sendable, Equatable {
         let raw = try c.decodeIfPresent([String].self, forKey: .pinnedMetrics)
         pinnedMetrics = raw.map { $0.compactMap(DashboardMetric.init(rawValue:)) } ?? d.pinnedMetrics
         checkIns = try c.decodeIfPresent(CheckInSettings.self, forKey: .checkIns) ?? d.checkIns
+        zones = (try? c.decodeIfPresent(ZoneSettings.self, forKey: .zones)) ?? d.zones
+        smartAlarm = (try? c.decodeIfPresent(SmartAlarmSettings.self, forKey: .smartAlarm)) ?? d.smartAlarm
     }
 }
 

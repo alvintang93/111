@@ -174,9 +174,12 @@ public struct WorkoutDetail: Codable, Sendable, Equatable, Identifiable {
     public var hr120: Double?
     /// Apple's one-minute heart-rate recovery for this workout, when Health has one.
     public var appleRecovery1: Double?
+    /// Seconds at each whole bpm during the workout (sparse), for time in zone with any zone settings.
+    public var hrSeconds: [Int: Double]
 
     public init(start: Date, end: Date, activityType: UInt, averageHR: Double? = nil, peakHR: Double? = nil,
-                endHR: Double? = nil, hr60: Double? = nil, hr120: Double? = nil, appleRecovery1: Double? = nil) {
+                endHR: Double? = nil, hr60: Double? = nil, hr120: Double? = nil, appleRecovery1: Double? = nil,
+                hrSeconds: [Int: Double] = [:]) {
         self.start = start
         self.end = end
         self.activityType = activityType
@@ -186,6 +189,7 @@ public struct WorkoutDetail: Codable, Sendable, Equatable, Identifiable {
         self.hr60 = hr60
         self.hr120 = hr120
         self.appleRecovery1 = appleRecovery1
+        self.hrSeconds = hrSeconds
     }
 
     public var id: Date { start }
@@ -223,11 +227,15 @@ public enum WorkoutRecoveryAnalyzer {
             let apple = appleRecovery
                 .filter { $0.start >= w.end.addingTimeInterval(-60) && $0.start <= w.end.addingTimeInterval(params.appleRecoveryMatchWindow) }
                 .min { abs($0.start.timeIntervalSince(w.end)) < abs($1.start.timeIntervalSince(w.end)) }?.value
+            let histogram = HeartRateHistogram.build(samples: hr, window: DateInterval(start: w.start, end: max(w.end, w.start)),
+                                                     maxGap: params.maxSampleGap)
+            var bins: [Int: Double] = [:]
+            for (bpm, sec) in histogram.seconds.enumerated() where sec > 0 { bins[bpm] = sec }
             return WorkoutDetail(start: w.start, end: w.end, activityType: w.activityType,
                                  averageHR: Stats.mean(during), peakHR: during.max(), endHR: endHR,
                                  hr60: nearest(to: w.end.addingTimeInterval(60), within: 15),
                                  hr120: nearest(to: w.end.addingTimeInterval(120), within: 20),
-                                 appleRecovery1: apple)
+                                 appleRecovery1: apple, hrSeconds: bins)
         }
     }
 }

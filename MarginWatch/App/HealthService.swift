@@ -28,6 +28,23 @@ final class HealthService {
             Self.quantity(.stepCount),
             Self.quantity(.heartRateRecoveryOneMinute),
             Self.quantity(.bodyMass),
+            Self.quantity(.vo2Max),
+            Self.quantity(.bloodPressureSystolic),
+            Self.quantity(.bloodPressureDiastolic),
+            Self.quantity(.bodyFatPercentage),
+            Self.quantity(.leanBodyMass),
+            Self.quantity(.bloodGlucose),
+            Self.quantity(.dietaryEnergyConsumed),
+            Self.quantity(.dietaryProtein),
+            Self.quantity(.dietaryCarbohydrates),
+            Self.quantity(.dietaryFatTotal),
+            Self.quantity(.distanceWalkingRunning),
+            Self.quantity(.runningStrideLength),
+            Self.quantity(.runningVerticalOscillation),
+            Self.quantity(.runningGroundContactTime),
+            Self.quantity(.runningPower),
+            Self.quantity(.runningSpeed),
+            HKObjectType.categoryType(forIdentifier: .menstrualFlow)!,
             Self.sleepType,
             HKObjectType.workoutType(),
             HKObjectType.characteristicType(forIdentifier: .dateOfBirth)!,
@@ -124,6 +141,83 @@ final class HealthService {
             limit: 1
         )
         return try await descriptor.result(for: store).first?.quantity.doubleValue(for: .gramUnit(with: .kilo))
+    }
+
+    // MARK: - Biomarkers (batch 2)
+
+    /// Readings of one biomarker in display units (see `BiomarkerKind`).
+    func biomarker(_ kind: BiomarkerKind, in interval: DateInterval) async throws -> [TimedValue] {
+        switch kind {
+        case .vo2Max: return try await values(.vo2Max, unit: HKUnit(from: "ml/kg*min"), in: interval)
+        case .systolic: return try await values(.bloodPressureSystolic, unit: .millimeterOfMercury(), in: interval)
+        case .diastolic: return try await values(.bloodPressureDiastolic, unit: .millimeterOfMercury(), in: interval)
+        case .bodyFat:
+            return try await values(.bodyFatPercentage, unit: .percent(), in: interval)
+                .map { TimedValue(start: $0.start, end: $0.end, value: $0.value * 100) }
+        case .leanMass: return try await values(.leanBodyMass, unit: .gramUnit(with: .kilo), in: interval)
+        case .bodyMass: return try await values(.bodyMass, unit: .gramUnit(with: .kilo), in: interval)
+        case .glucose: return try await values(.bloodGlucose, unit: HKUnit(from: "mg/dL"), in: interval)
+        }
+    }
+
+    /// Daily sums of logged energy and macronutrients (written to Health by other apps).
+    func nutrition(days: Int, calendar: Calendar = .current) async throws -> [NutritionDay] {
+        let end = calendar.startOfDay(for: Date()).addingTimeInterval(86400)
+        let start = calendar.date(byAdding: .day, value: -days, to: end)!
+        var out: [Day: NutritionDay] = [:]
+        let kinds: [(HKQuantityTypeIdentifier, HKUnit, WritableKeyPath<NutritionDay, Double?>)] = [
+            (.dietaryEnergyConsumed, .kilocalorie(), \.energyKcal),
+            (.dietaryProtein, .gram(), \.proteinG),
+            (.dietaryCarbohydrates, .gram(), \.carbsG),
+            (.dietaryFatTotal, .gram(), \.fatG),
+        ]
+        for (id, unit, key) in kinds {
+            let descriptor = HKStatisticsCollectionQueryDescriptor(
+                predicate: .quantitySample(type: Self.quantity(id),
+                                           predicate: HKQuery.predicateForSamples(withStart: start, end: end)),
+                options: .cumulativeSum, anchorDate: start, intervalComponents: DateComponents(day: 1))
+            let collection = try await descriptor.result(for: store)
+            collection.enumerateStatistics(from: start, to: end) { stats, _ in
+                guard let sum = stats.sumQuantity() else { return }
+                let d = Day(stats.startDate, calendar: calendar)
+                var n = out[d] ?? NutritionDay(day: d)
+                n[keyPath: key] = sum.doubleValue(for: unit)
+                out[d] = n
+            }
+        }
+        return out.values.sorted { $0.day < $1.day }
+    }
+
+    /// Days with menstrual flow recorded (any level except "none").
+    func menstrualFlow(in interval: DateInterval, calendar: Calendar = .current) async throws -> [FlowDay] {
+        let descriptor = HKSampleQueryDescriptor(
+            predicates: [.categorySample(type: HKObjectType.categoryType(forIdentifier: .menstrualFlow)!,
+                                         predicate: HKQuery.predicateForSamples(withStart: interval.start, end: interval.end))],
+            sortDescriptors: [SortDescriptor(\.startDate)])
+        // Raw values: 1 unspecified, 2 light, 3 medium, 4 heavy, 5 none.
+        return try await descriptor.result(for: store)
+            .filter { (1...4).contains($0.value) }
+            .map { FlowDay(day: Day($0.startDate, calendar: calendar), level: $0.value) }
+    }
+
+    /// Form metrics for one run, averaged by Health over the run.
+    func runMetrics(start: Date, end: Date) async throws -> RunMetrics {
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        func stat(_ id: HKQuantityTypeIdentifier, _ unit: HKUnit, sum: Bool) async throws -> Double? {
+            let d = HKStatisticsQueryDescriptor(predicate: .quantitySample(type: Self.quantity(id), predicate: predicate),
+                                                options: sum ? .cumulativeSum : .discreteAverage)
+            let s = try await d.result(for: store)
+            return (sum ? s?.sumQuantity() : s?.averageQuantity())?.doubleValue(for: unit)
+        }
+        return RunMetrics(
+            start: start, end: end,
+            distanceKm: try await stat(.distanceWalkingRunning, .meterUnit(with: .kilo), sum: true),
+            steps: try await stat(.stepCount, .count(), sum: true),
+            strideLengthM: try await stat(.runningStrideLength, .meter(), sum: false),
+            verticalOscillationCm: try await stat(.runningVerticalOscillation, .meterUnit(with: .centi), sum: false),
+            groundContactMs: try await stat(.runningGroundContactTime, .secondUnit(with: .milli), sum: false),
+            powerW: try await stat(.runningPower, .watt(), sum: false),
+            speedMS: try await stat(.runningSpeed, HKUnit.meter().unitDivided(by: .second()), sum: false))
     }
 
     func workouts(in interval: DateInterval) async throws -> [WorkoutSample] {

@@ -5,7 +5,7 @@ ships as its own pull request, with unit tests in `MarginCore` and the product-l
 still passing. Margin stays a standalone watch app that computes everything on the watch.
 Batch 4 is the exception: it needs an iPhone companion and, for the AI coach, a network service.
 
-Status key: **Have** = already in Margin · **B1–B4** = planned batch · **Open** = needs a decision first
+Status key: **Have** = already in Margin · **B1–B4** = batch · **Open** = needs a decision first. B1 shipped in PR #3, B2 in PR #4.
 
 ## Core metrics and readiness
 
@@ -60,8 +60,16 @@ Status key: **Have** = already in Margin · **B1–B4** = planned batch · **Ope
 | Visual charts across metrics | B2 (watch) / B4 (coach) | B2 adds a "compare two metrics" chart on the watch |
 | iPhone home and lock screen widgets | B4 | Needs the iPhone companion app |
 
-## Batch 1 scope (this PR)
+## Batch 1 scope (PR #3)
 
 Strain score, stress score, energy bank, HR recovery, caffeine and hydration, unified timeline,
 activity status, proactive check-ins, pinned Today tiles and new complications. The math lives in
 `MarginCore` with deterministic tests. Formulas are documented in `docs/METHODOLOGY.md` §12–§17.
+
+## Batch 2 scope (PR #4)
+
+Body page with biological age, VO2 max, resting HR, body mass, body fat and lean mass trends with 30-day
+projections, blood pressure, glucose and nutrition, all read from Health. Also running form, custom heart-rate
+zones with cardio focus, cycle phase and prediction with HRV and temperature by phase, a compare-two-metrics
+chart, and the smart alarm. Formulas are in `docs/METHODOLOGY.md` §18–§23. Still not done from B2: manual
+blood-pressure logging (needs write access to Health).

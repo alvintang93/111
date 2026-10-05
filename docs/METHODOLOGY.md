@@ -299,3 +299,85 @@ You can mark periods as *unwell*, *sore* or *travel*. Days inside any marked per
 - for unwell and sore only: the load model is paused, so ATL and CTL carry over unchanged instead of decaying, and Push is off.
 
 Today's score is still computed on a marked day, against the unmarked baseline.
+
+## 18. Biomarker trends (engine 2.2)
+
+Body mass, body fat, lean mass, VO2 max, resting HR, blood pressure and glucose are
+read from Health (Margin does not write them). For each, over the last 90 days
+(365 for VO2 max):
+- **Slope:** Theil–Sen (median of all pairwise slopes), so one odd reading cannot swing it. Needs ≥ 4 readings spanning ≥ 14 days.
+- **Projection:** the fitted line 30 days past today, with a band of ±1.96 × robust residual SD × √(1 + 30 / span in days). The band widens when you extrapolate further than the data covers. It describes "if the current trend holds", not a prediction of what you will do.
+
+**Blood pressure** pairs systolic and diastolic readings with the same timestamp.
+The latest reading is labelled with the American Heart Association category
+(normal < 120/80; elevated 120–129 and < 80; high stage 1 130–139 or 80–89; high
+stage 2 ≥ 140 or ≥ 90). One reading is not an assessment.
+
+**Glucose:** latest, 24 h mean and share of readings in 70–140 mg/dL, plus daily means.
+**Nutrition:** daily sums of energy, protein, carbohydrate and fat logged by other apps. The 7-day average skips days with nothing logged.
+
+## 19. Biological age (estimate)
+
+- **Start:** fitness age when VO2 max is available. That is the age at which your VO2 max would be typical, using a linear fit to published age norms: men 52 − 0.40 × (age − 20), women 44 − 0.35 × (age − 20), unspecified the midpoint. Without VO2 max, the start is your chronological age.
+- **Resting HR:** +1.7 years per 10 bpm above 60 (median of the last 30 days, needs ≥ 7). This converts a hazard ratio of about 1.16 per 10 bpm at about 1.09 per year of age. It is halved when VO2 max is used, because the two overlap.
+- **Sleep:** average over the last 14 nights (needs ≥ 7). Under 7 h adds 1.3 years per missing hour; over 9 h adds 1 year per extra hour; capped at 3.
+- The total is clamped to chronological age ± 20 (and ≥ 18).
+
+This is a heuristic that combines population associations. It is not a validated
+biological-age model and not a clinical measure. Every component is shown on the watch.
+
+## 20. Cycle
+
+A recorded flow day starts a new period when the previous flow day is ≥ 10 days
+earlier (spotting doesn't start a new cycle). Cycle length is the median of the
+last 6 lengths between 18 and 45 days, otherwise 28. The next period is predicted
+at last start + that length. Ovulation is placed 14 days before the next period:
+- *menstrual* while flow continues from the start;
+- *ovulatory* ovulation ± 1 day;
+- *follicular* before that;
+- *luteal* after it.
+
+For each phase, Margin averages next-morning HRV vs your 60-day baseline and wrist
+temperature vs your median, over the recorded cycles. Phase does not change the
+recovery score; §11 explains how temperature is handled.
+
+## 21. Running form and zones
+
+Run form metrics (stride length, vertical oscillation, ground contact time, power,
+speed) are Health's averages over each run recorded with the Workout app.
+Cadence = steps ÷ minutes. Pace uses distance (or speed when distance is missing).
+Typical values are medians over the other runs in 60 days.
+
+**Custom zones:** five zone lower bounds, set as % of HR reserve (default
+50/60/70/80/90), % of HRmax, or bpm. Time below zone 1 is zone 0. The default
+reproduces the original zone split exactly (unit-tested). Zones drive today's zone
+minutes, per-workout time in zone and cardio focus. Training load (TRIMP) is
+unaffected.
+
+**Cardio focus** per workout:
+- *Anaerobic* if zone 5 holds ≥ 10% of in-zone time and ≥ 3 min.
+- Otherwise *high aerobic* if zones 3–4 hold ≥ 40%.
+- Otherwise *low aerobic*.
+- None with under 5 min in zones 1–5.
+
+The 28-day summary adds up workout minutes by zone group.
+
+## 22. Compare two metrics
+
+Daily values for the last 30 days: recovery, HRV, sleeping HR, sleep hours, sleep
+score, load, stress, steps, caffeine and water. Caffeine and water count only on
+days with something logged. Two metrics are paired by day, optionally with the
+second one day later. The result is Spearman's ρ with a t-approximation p-value
+(n − 2 df). Associations only, and with 30 days several pairs will look
+"significant" by chance.
+
+## 23. Smart alarm
+
+A watchOS smart-alarm session is scheduled for the window before your wake time
+(10–30 min). While it runs, wrist acceleration is sampled at 10 Hz and summarised
+every 30 s as the mean |a − 1 g|. Two consecutive epochs at ≥ 0.015 g count as
+sustained movement, a common sign of lighter sleep or a brief arousal, and trigger
+the haptic alarm. The latest wake time always triggers it. watchOS lets apps
+schedule the session only while they are open, so Margin re-arms it every time it
+comes to the foreground. The movement threshold is a heuristic and has not been
+validated against sleep staging.

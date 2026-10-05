@@ -10,9 +10,11 @@ Today ─ Recovery ring · PUSH / MAINTAIN / RECOVER / REST · pinned tiles · q
 Energy ─ Energy bank curve (wake → now) · hourly stress · stress bands
 Drivers ─ HRV, sleeping HR, sleep, respiration, temp: value, baseline, z, weight
 Sleep ─ asleep vs need, stages, efficiency, regularity, debt, tonight's need
-Load ─ Strain 0–100, TRIMP today, ATL / CTL / form / ACWR, ceiling, zones, HR recovery
+Load ─ Strain 0–100, TRIMP today, ATL / CTL / form / ACWR, ceiling, custom zones, cardio focus, HR recovery
+Body ─ Biological age estimate, VO2 max, resting HR, body composition with 30-day projection, BP, glucose, food
 Trends ─ 14-day recovery and HRV
-More ─ Timeline, Caffeine & water, Status (unwell / sore / travel), Journal, Insights, Settings
+More ─ Timeline, Caffeine & water, Status, Running form, Cycle, Compare, Journal, Insights, Settings
+Sleep ─ also smart alarm (wakes you in a 10–30 min window at the first sustained movement)
 Complications ─ Readiness, Strain, Energy, Stress, Sleep (circular, corner, rectangular, inline)
 Check-ins ─ morning summary, evening journal, caffeine cut-off, weekly review (local notifications)
 ```
@@ -35,7 +37,7 @@ I have not benchmarked against Bevel, whose algorithms are proprietary, so
 ## Repository layout
 
 ```
-MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 112 unit tests.
+MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 130 unit tests.
 MarginWatch/App/   SwiftUI watch app: HealthKit adapter, cache, model, views
 MarginWatch/Widgets/  WidgetKit complications
 MarginWatch/Shared/   Code shared by app and complications
@@ -76,7 +78,7 @@ Groups isn't available for your team, you need the paid Apple Developer Program.
 ## Verify it yourself
 
 ```bash
-swift test --package-path MarginCore    # 112 tests, macOS or Linux
+swift test --package-path MarginCore    # 130 tests, macOS or Linux
 python3 scripts/check_product_language.py
 ```
 

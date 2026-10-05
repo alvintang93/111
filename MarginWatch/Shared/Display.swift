@@ -235,3 +235,69 @@ extension EnergySummary.StartSource {
         }
     }
 }
+
+extension BloodPressureCategory {
+    var title: String {
+        switch self {
+        case .normal: return "Normal"
+        case .elevated: return "Elevated"
+        case .high1: return "High (stage 1)"
+        case .high2: return "High (stage 2)"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .normal: return .green
+        case .elevated: return .yellow
+        case .high1: return .orange
+        case .high2: return .red
+        }
+    }
+}
+
+extension CyclePhase {
+    var title: String {
+        switch self {
+        case .menstrual: return "Menstrual"
+        case .follicular: return "Follicular"
+        case .ovulatory: return "Ovulatory"
+        case .luteal: return "Luteal"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .menstrual: return .red
+        case .follicular: return .green
+        case .ovulatory: return .purple
+        case .luteal: return .orange
+        }
+    }
+}
+
+extension CardioFocus {
+    var title: String {
+        switch self {
+        case .lowAerobic: return "Low aerobic"
+        case .highAerobic: return "High aerobic"
+        case .anaerobic: return "Anaerobic"
+        }
+    }
+
+    var short: String {
+        switch self {
+        case .lowAerobic: return "Low"
+        case .highAerobic: return "High"
+        case .anaerobic: return "Anaer."
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .lowAerobic: return .blue
+        case .highAerobic: return .orange
+        case .anaerobic: return .purple
+        }
+    }
+}

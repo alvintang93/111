@@ -12,6 +12,7 @@ struct RootView: View {
                 DriversView()
                 SleepView()
                 LoadView()
+                BodyView()
                 TrendsView()
                 MoreView()
             }

@@ -7,6 +7,9 @@ struct MoreView: View {
             NavigationLink { DayTimelineView() } label: { Label("Timeline", systemImage: "list.bullet.rectangle") }
             NavigationLink { IntakeView() } label: { Label("Caffeine & water", systemImage: "cup.and.saucer") }
             NavigationLink { StatusView() } label: { Label("Status", systemImage: "flag") }
+            NavigationLink { RunningView() } label: { Label("Running form", systemImage: "figure.run") }
+            NavigationLink { CycleView() } label: { Label("Cycle", systemImage: "circle.dashed") }
+            NavigationLink { CompareView() } label: { Label("Compare", systemImage: "chart.xyaxis.line") }
             NavigationLink { JournalView() } label: { Label("Journal", systemImage: "book.closed") }
             NavigationLink { InsightsView() } label: { Label("Insights", systemImage: "chart.bar.xaxis") }
             NavigationLink { SettingsView() } label: { Label("Settings", systemImage: "gearshape") }
@@ -121,6 +124,10 @@ struct SettingsView: View {
             Section("Load-change limit") {
                 Stepper(String(format: "ACWR ceiling %.2f", model.settings.acwrCeiling),
                         value: $model.settings.acwrCeiling, in: 1.1...1.6, step: 0.05)
+            }
+            Section("Training and sleep") {
+                NavigationLink("Heart-rate zones") { ZonesSettingsView() }
+                NavigationLink("Smart alarm") { SmartAlarmSettingsView(alarm: model.smartAlarm) }
             }
             LifestyleSettingsSections()
             Section("Data") {

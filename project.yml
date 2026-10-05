@@ -40,6 +40,7 @@ targets:
         CFBundleDisplayName: Margin
         WKApplication: true
         WKWatchOnly: true
+        WKBackgroundModes: [alarm]
         MarginAppGroupID: $(APP_GROUP_ID)
         NSHealthShareUsageDescription: Margin reads heart rate, HRV, resting heart rate, respiratory rate, wrist temperature, sleep and workouts to compute readiness and training load. All processing happens on your watch.
     entitlements:

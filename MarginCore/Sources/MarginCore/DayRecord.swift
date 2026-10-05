@@ -1,7 +1,7 @@
 import Foundation
 
 /// A timestamped measurement (HealthKit quantity sample, already in display units).
-public struct TimedValue: Sendable, Equatable {
+public struct TimedValue: Codable, Sendable, Equatable {
     public let start: Date
     public let end: Date
     public let value: Double
@@ -100,7 +100,8 @@ public struct DayRecord: Codable, Sendable, Equatable {
     /// v2: windows, ingestion stats, workouts, fingerprint, plausibility filtering.
     /// v3: hourly slices (stress, strain by hour, energy), workout details with
     /// heart-rate recovery, step totals.
-    public static let schemaVersion = 3
+    /// v4: per-workout time at heart rate (custom zones, cardio focus).
+    public static let schemaVersion = 4
 
     public let day: Day
     public var sleep: SleepNight?

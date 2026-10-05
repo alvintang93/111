@@ -639,7 +639,8 @@ public struct Engine {
     }
 
     public func brief(journal: [Day: Set<String>] = [:], intake: [IntakeEntry] = [],
-                      lifestyle: LifestyleSettings = LifestyleSettings(), historyDays: Int = 14,
+                      lifestyle: LifestyleSettings = LifestyleSettings(), biomarkers: BiomarkerInput? = nil,
+                      historyDays: Int = 14,
                       generatedAt: Date = Date(), dataSyncedAt: Date? = nil) -> DailyBrief {
         let i = todayIndex
         let rec = recovery(at: i)
@@ -649,8 +650,9 @@ public struct Engine {
         let load = LoadSummary(
             todayLoad: todayRecord.flatMap(trimp),
             todayCoverageHours: todayRecord?.coverageHours ?? 0,
-            todayZoneMinutes: (todayRecord?.activity.zoneSeconds(hrRest: hrRest, hrMax: hrMax)
-                ?? Array(repeating: 0, count: 6)).map { $0 / 60 },
+            todayZoneMinutes: (todayRecord.map {
+                ZoneModel.zoneSeconds(histogram: $0.activity, bounds: lifestyle.zones.bpmBounds(hrRest: hrRest, hrMax: hrMax))
+            } ?? Array(repeating: 0, count: 6)).map { $0 / 60 },
             atl: last?.atl,
             ctl: last?.ctl,
             acwr: eligible.map { $0.atl / $0.ctl },
@@ -699,7 +701,10 @@ public struct Engine {
             intake: intakeSummary(at: i, entries: intake, lifestyle: lifestyle),
             heartRateRecovery: heartRateRecoverySummary(at: i),
             statuses: StatusPeriod.kinds(on: today, in: statusPeriods),
-            timelines: (max(0, i - 1)...i).map { timeline(at: $0, journal: journal, entries: intake) }
+            timelines: (max(0, i - 1)...i).map { timeline(at: $0, journal: journal, entries: intake) },
+            biomarkers: biomarkerSummary(biomarkers, lifestyle: lifestyle, now: now),
+            cardioFocus: cardioFocusSummary(zones: lifestyle.zones),
+            series: compareSeries(intake: intake)
         )
     }
 }
