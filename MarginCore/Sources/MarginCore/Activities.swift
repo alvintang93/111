@@ -85,6 +85,8 @@ public struct ActivityEntry: Codable, Sendable, Equatable, Identifiable {
     public var strength: StrengthSession?
     /// How the Margin log and the Health workout were matched, if they were.
     public var match: MatchRule?
+    /// Heart-rate analysis of the Health workout (set by the engine).
+    public var analysis: WorkoutAnalysis?
 
     public enum MatchRule: String, Codable, Sendable {
         /// The Margin log stores the Health workout's UUID.

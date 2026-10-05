@@ -57,7 +57,7 @@ final class IntegrityTests: XCTestCase {
 
     func testOldCacheSchemaIsRebuiltNotMisread() throws {
         let old = Data(#"{"schema":4,"records":[]}"#.utf8)
-        XCTAssertEqual(RecordCacheFile.decode(old), .schemaMismatch(found: 4, expected: 5))
+        XCTAssertEqual(RecordCacheFile.decode(old), .schemaMismatch(found: 4, expected: DayRecord.schemaVersion))
     }
 
     // MARK: Biomarker hygiene

@@ -234,6 +234,10 @@ public struct DailyBrief: Codable, Sendable, Equatable {
     public var activities: [ActivityEntry]?
     /// Fixed metric pairs over the last 60 days (Spearman, Holm-corrected).
     public var metricInsights: [MetricPairInsight]?
+    /// Why today's recovery is what it is, compared with the previous scored day.
+    public var explanation: RecoveryExplanation?
+    /// Last 14 nights' sleep, oldest first.
+    public var sleepHistory: [SleepHistoryNight]?
 }
 
 public struct BiomarkerSummary: Codable, Sendable, Equatable {

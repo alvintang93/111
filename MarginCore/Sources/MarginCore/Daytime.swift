@@ -179,6 +179,8 @@ public struct WorkoutDetail: Codable, Sendable, Equatable, Identifiable {
     public var source: String?
     /// Seconds at each whole bpm during the workout (sparse), for time in zone with any zone settings.
     public var hrSeconds: [Int: Double]
+    /// Mean heart rate per 30 s from the start to 3 min after the end (nil where no sample). Capped at 4 h.
+    public var hrCurve: [Double?]?
 
     public init(start: Date, end: Date, activityType: UInt, averageHR: Double? = nil, peakHR: Double? = nil,
                 endHR: Double? = nil, hr60: Double? = nil, hr120: Double? = nil, appleRecovery1: Double? = nil,
@@ -223,6 +225,19 @@ public enum WorkoutRecoveryAnalyzer {
             samples(t.addingTimeInterval(-tol), t.addingTimeInterval(tol))
                 .min { abs($0.date.timeIntervalSince(t)) < abs($1.date.timeIntervalSince(t)) }?.bpm
         }
+        func curve(_ w: WorkoutSample) -> [Double?] {
+            let step: TimeInterval = 30
+            let end = min(w.end.addingTimeInterval(180), w.start.addingTimeInterval(4 * 3600))
+            let n = max(Int((end.timeIntervalSince(w.start) / step).rounded(.up)), 0)
+            var sums = Array(repeating: 0.0, count: n), counts = Array(repeating: 0, count: n)
+            for s in hr where s.date >= w.start && s.date < end {
+                let k = Int(s.date.timeIntervalSince(w.start) / step)
+                guard k < n else { continue }
+                sums[k] += s.bpm
+                counts[k] += 1
+            }
+            return (0..<n).map { counts[$0] > 0 ? sums[$0] / Double(counts[$0]) : nil }
+        }
         return workouts.sorted { $0.start < $1.start }.map { w in
             let during = samples(w.start, w.end).map(\.bpm)
             var endHR = samples(w.end.addingTimeInterval(-60), w.end).map(\.bpm).max()
@@ -241,6 +256,7 @@ public enum WorkoutRecoveryAnalyzer {
                                   appleRecovery1: apple, hrSeconds: bins)
             d.healthID = w.healthID
             d.source = w.source
+            d.hrCurve = curve(w)
             return d
         }
     }

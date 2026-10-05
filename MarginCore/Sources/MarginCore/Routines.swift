@@ -61,9 +61,12 @@ public struct Routine: Codable, Sendable, Equatable, Identifiable {
 
 public struct RoutineLibrary: Codable, Sendable, Equatable {
     public var routines: [Routine]
+    /// Deletion times, so a delete on one device survives a merge with an older copy.
+    public var deleted: [UUID: Date]?
 
-    public init(routines: [Routine] = []) {
+    public init(routines: [Routine] = [], deleted: [UUID: Date]? = nil) {
         self.routines = routines
+        self.deleted = deleted
     }
 
     /// Not archived, most recently changed first.
@@ -107,8 +110,11 @@ public struct RoutineLibrary: Codable, Sendable, Equatable {
     }
 
     /// Deletes the template. Past sessions keep their sets and the routine name they were done under.
-    public mutating func delete(_ id: UUID) {
+    public mutating func delete(_ id: UUID, at date: Date = Date()) {
         routines.removeAll { $0.id == id }
+        var t = deleted ?? [:]
+        t[id] = date
+        deleted = t
     }
 
     public mutating func moveItem(_ itemID: UUID, in routineID: UUID, by offset: Int, at date: Date) {

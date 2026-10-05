@@ -40,6 +40,13 @@ public struct SleepSegment: Sendable, Equatable {
     }
 }
 
+public struct StageSpan: Codable, Sendable, Equatable, Identifiable {
+    public var start: Date
+    public var end: Date
+    public var stage: SleepStage
+    public var id: Date { start }
+}
+
 public struct SleepNight: Codable, Sendable, Equatable {
     /// All sleep in the night window (main bout + naps), seconds.
     public var asleep: TimeInterval
@@ -52,6 +59,8 @@ public struct SleepNight: Codable, Sendable, Equatable {
     public var mainOnset: Date
     public var mainWake: Date
     public var mainAsleep: TimeInterval
+    /// The night's stage timeline (hypnogram), after overlap resolution. Nil in records built before schema 6.
+    public var stages: [StageSpan]? = nil
 
     public var mainSpan: TimeInterval { mainWake.timeIntervalSince(mainOnset) }
 
@@ -95,6 +104,7 @@ public enum SleepAggregator {
 
         var night = SleepNight(asleep: 0, awake: 0, core: 0, deep: 0, rem: 0, unspecified: 0,
                                mainOnset: window.start, mainWake: window.start, mainAsleep: 0)
+        night.stages = pieces.map { StageSpan(start: $0.start, end: $0.end, stage: $0.stage) }
         for p in pieces {
             let d = p.end.timeIntervalSince(p.start)
             switch p.stage {
