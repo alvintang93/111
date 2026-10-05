@@ -27,6 +27,7 @@ struct MarginPhoneApp: App {
             .environmentObject(model)
             .environmentObject(coach)
             .onChange(of: coach.pendingPrompt) { _, p in if p != nil { tab = 2 } }
+            .modifier(MinimizingTabBar())
             .onChange(of: phase) { _, p in
                 if p == .active {
                     model.requestRefresh()
@@ -34,6 +35,21 @@ struct MarginPhoneApp: App {
                 }
             }
         }
+    }
+}
+
+/// iOS 26: the glass tab bar shrinks while scrolling down.
+struct MinimizingTabBar: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            content.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
     }
 }
 
@@ -63,7 +79,7 @@ struct PhoneTodayView: View {
                 if let b = model.brief, b.isCurrent() {
                     VStack(spacing: 16) {
                         HStack(spacing: 16) {
-                            RecoveryDial(recovery: b.recovery).frame(width: 140, height: 140)
+                            RecoveryDial(recovery: b.recovery).frame(width: 132, height: 132)
                             VStack(alignment: .leading, spacing: 6) {
                                 Label(b.plan.directive.title, systemImage: b.plan.directive.symbol)
                                     .font(.title3.bold()).foregroundStyle(b.plan.directive.color)
@@ -77,9 +93,13 @@ struct PhoneTodayView: View {
                             }
                             Spacer(minLength: 0)
                         }
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
-                            ForEach(model.pinned, id: \.self) { m in
-                                PhoneTile(tile: tile(m, b))
+                        .padding(16)
+                        .glassCard(cornerRadius: 28, tint: b.recovery.band.color)
+                        GlassGroup(spacing: 12) {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                                ForEach(model.pinned, id: \.self) { m in
+                                    PhoneTile(tile: tile(m, b))
+                                }
                             }
                         }
                         if let e = b.energy {
@@ -127,6 +147,7 @@ struct PhoneTodayView: View {
                 }
             }
             .refreshable { model.requestRefresh() }
+            .background { MarginBackdrop(tint: model.brief?.recovery.band.color ?? .gray) }
             .navigationTitle("Today")
         }
     }
@@ -166,9 +187,9 @@ struct PhoneTile: View {
             if let f = tile.fraction { ProgressView(value: f).tint(tile.tone.color) }
             Text(tile.caption).font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
-        .padding(12)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
+        .glassCard(cornerRadius: 22, tint: tile.tone == .neutral ? nil : tile.tone.color, interactive: true)
     }
 }
 
@@ -183,7 +204,7 @@ struct Card<Content: View>: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 16))
+        .glassCard(cornerRadius: 24)
     }
 }
 
@@ -262,6 +283,7 @@ struct PhoneTrendsView: View {
                     NoDataView().padding(.top, 80)
                 }
             }
+            .background { MarginBackdrop(tint: .indigo) }
             .navigationTitle("Trends")
         }
     }
@@ -353,6 +375,8 @@ struct PhoneBodyView: View {
                     NavigationLink { FoodLogView() } label: { Label("Log food", systemImage: "fork.knife") }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background { MarginBackdrop(tint: .teal) }
             .navigationTitle("Body")
         }
     }
@@ -556,6 +580,8 @@ struct PhoneSettingsView: View {
                 }
                 CoachSettingsSection()
             }
+            .scrollContentBackground(.hidden)
+            .background { MarginBackdrop(tint: .gray) }
             .navigationTitle("Settings")
         }
     }

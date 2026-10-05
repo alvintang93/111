@@ -38,8 +38,10 @@ struct CoachView: View {
                                     Label(coach.settings.engine == .onDevice ? "Private: runs on this iPhone, nothing leaves it." : "Claude: data the coach looks up is sent to Anthropic.",
                                           systemImage: coach.settings.engine == .onDevice ? "lock.shield" : "cloud")
                                         .font(.caption).foregroundStyle(.secondary)
-                                    ForEach(starters, id: \.self) { s in
-                                        Button(s) { Task { await coach.send(s) } }.buttonStyle(.bordered)
+                                    GlassGroup(spacing: 8) {
+                                        ForEach(starters, id: \.self) { s in
+                                            Button(s) { Task { await coach.send(s) } }.glassButton()
+                                        }
                                     }
                                 }
                                 ForEach(coach.conversation.items) { item in
@@ -65,13 +67,18 @@ struct CoachView: View {
                             draft = ""
                             Task { await coach.send(text) }
                         } label: {
-                            Image(systemName: "arrow.up.circle.fill").font(.title)
+                            Image(systemName: "arrow.up").font(.headline)
                         }
+                        .glassButton(prominent: true)
                         .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || coach.isWorking)
                     }
-                    .padding()
+                    .padding(10)
+                    .glassCard(cornerRadius: 26)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
                 }
             }
+            .background { MarginBackdrop(tint: coach.ghostMode ? .gray : .purple) }
             .navigationTitle(coach.ghostMode ? "Coach · ghost" : "Coach")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -123,7 +130,7 @@ struct ChatBubble: View {
         case .user:
             HStack {
                 Spacer(minLength: 40)
-                Text(item.text).padding(10).background(Color.accentColor.opacity(0.25), in: RoundedRectangle(cornerRadius: 14))
+                Text(item.text).padding(12).glassCard(cornerRadius: 20, tint: .accentColor)
             }
         case .assistant:
             Text(LocalizedStringKey(item.text)).textSelection(.enabled)
@@ -157,14 +164,14 @@ struct ChatBubble: View {
                                 }
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .glassButton(prominent: !added.contains(s.id))
                         .disabled(added.contains(s.id))
                     }
                 }
                 if let calendarError { Text(calendarError).font(.caption).foregroundStyle(.orange) }
             }
             .padding()
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
+            .glassCard(cornerRadius: 22)
         }
     }
 }
@@ -205,7 +212,7 @@ struct CoachChart: View {
             }
         }
         .padding()
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
+        .glassCard(cornerRadius: 22)
     }
 }
 

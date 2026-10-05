@@ -11,6 +11,7 @@ struct TileGrid: View {
 
     var body: some View {
         let metrics = model.lifestyle.pinnedMetrics
+        GlassGroup(spacing: 6) {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
             ForEach(metrics, id: \.self) { m in
                 NavigationLink {
@@ -22,6 +23,7 @@ struct TileGrid: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
         }
     }
 
@@ -63,9 +65,9 @@ struct TileView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
-        .padding(6)
+        .padding(7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .glassCard(cornerRadius: 14, tint: tile.tone == .neutral ? nil : tile.tone.color)
         .accessibilityElement(children: .combine)
     }
 }
@@ -75,6 +77,7 @@ struct QuickLogRow: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
+        GlassGroup(spacing: 6) {
         HStack(spacing: 6) {
             Button {
                 model.addIntake(.caffeine, amount: model.lifestyle.typicalDoseMg, label: "Coffee")
@@ -82,6 +85,7 @@ struct QuickLogRow: View {
                 Label("Coffee", systemImage: "cup.and.saucer.fill").labelStyle(.iconOnly)
             }
             .tint(.brown)
+            .glassButton()
             .accessibilityLabel("Log a coffee")
             Button {
                 model.addIntake(.water, amount: 250)
@@ -89,13 +93,16 @@ struct QuickLogRow: View {
                 Label("Water", systemImage: "drop.fill").labelStyle(.iconOnly)
             }
             .tint(.cyan)
+            .glassButton()
             .accessibilityLabel("Log 250 millilitres of water")
             NavigationLink {
                 DayTimelineView()
             } label: {
                 Label("Timeline", systemImage: "list.bullet.rectangle").labelStyle(.iconOnly)
             }
+            .glassButton()
             .accessibilityLabel("Timeline")
+        }
         }
     }
 }
@@ -111,7 +118,10 @@ struct StatusBanner: View {
                 Label("Marked \(s.title.lowercased()) · baselines paused", systemImage: s.symbol)
                     .font(.caption2)
                     .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassCapsule(tint: .orange)
             }
             .buttonStyle(.plain)
         }
@@ -172,6 +182,10 @@ struct StressSection: View {
     let stress: StressSummary
 
     var body: some View {
+        card.padding(8).glassCard(cornerRadius: 16)
+    }
+
+    private var card: some View {
         VStack(spacing: 6) {
             HStack {
                 Text(stress.current.map { "\($0)" } ?? "–").font(.title3.bold()).monospacedDigit()
@@ -208,6 +222,10 @@ struct StrainCard: View {
     let strain: StrainSummary
 
     var body: some View {
+        card.padding(8).glassCard(cornerRadius: 16, tint: .orange)
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text(strain.score.map { "\($0)" } ?? "–").font(.system(size: 34, weight: .bold, design: .rounded)).monospacedDigit()
