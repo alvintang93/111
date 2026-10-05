@@ -415,3 +415,36 @@ and have not been validated.
 **Plate calculator.** Greedy from the heaviest plate (optimal for standard plate
 sets): kg 25/20/15/10/5/2.5/1.25, lb 45/35/25/10/5/2.5. When the target can't be
 loaded exactly, it shows the closest load below.
+
+## 25. iPhone companion and coach (engine 2.3, batch 4)
+
+**Where scores come from.** The watch is still the only place scores are
+computed. After each rescore it sends a payload to the iPhone as a WatchConnectivity
+file transfer: the brief, strength log, journal and settings, at most every
+5 minutes and at once after a sync or a workout. The iPhone app and its home and
+lock screen widgets only display that payload. Every tile uses the same
+`DashboardTile` rules as the watch, so nothing from a previous day is shown as today's.
+
+**Written by the iPhone.** Meals you log (energy, protein, carbohydrate, fat) are
+written to Health. Calendar events are created only when you tap "Add to
+Calendar" on a proposed session.
+
+**Lab results** are entered by hand from your reports, with the report's own
+reference range. Margin supplies no reference ranges and makes no interpretation.
+
+**Coach.** Claude (`claude-opus-5-5`), called from the iPhone with your own
+Anthropic API key, which is stored only in the iPhone Keychain. The coach reads data
+only through tools that return numbers Margin already computed:
+- today's brief;
+- up to 30 days of a daily metric;
+- body trends;
+- strength;
+- labs;
+- calendar busy times (titles only if you turn that on).
+
+Charts and plans are tool calls rendered by the app from Margin's own series, so
+plotted values never come from the model. The modes map to effort: Fast = low,
+Adaptive = medium, Thinking = high with a reasoning summary shown. Personalities
+change only the voice. Ghost mode keeps a conversation out of the saved history.
+Requests opt into server-side refusal fallback. When you chat, the data those tools
+return is sent to Anthropic. Nothing is sent without a key and a question.

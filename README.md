@@ -18,6 +18,8 @@ Strength ─ live workout, 118 exercises, autofill, crown weight, rest timer, pl
 Sleep ─ also smart alarm (wakes you in a 10–30 min window at the first sustained movement)
 Complications ─ Readiness, Strain, Energy, Stress, Sleep (circular, corner, rectangular, inline)
 Check-ins ─ morning summary, evening journal, caffeine cut-off, weekly review (local notifications)
+iPhone ─ Today dashboard, trends and compare, body, labs, food logging, configurable home and lock screen widgets
+Coach ─ Claude with your own API key: tools over your data, charts, calendar-aware plans, personalities, Fast / Adaptive / Thinking, ghost mode
 ```
 
 ## What it does that a typical recovery app does not
@@ -29,7 +31,7 @@ Check-ins ─ morning summary, evening journal, caffeine cut-off, weekly review 
 | Load-change limit | A load **ceiling**, solved in closed form, keeps ATL/CTL under your chosen limit (default 1.3). |
 | Evidence rules | "Recover" needs a strong signal or two that agree. "Push" needs full inputs and a calibrated scale. "Rest" needs elevated sleeping HR **and** elevated temperature or respiration. |
 | Journal statistics | Welch's t-test with Holm–Bonferroni across tags. Days you didn't journal are excluded, not counted as "no". |
-| Privacy | No account, no server, no subscription. Everything is computed on the watch. The only thing written to Health is the strength workouts you log. |
+| Privacy | No account, no server, no subscription. Everything is computed on the watch. Health writes: strength workouts (watch) and meals you log (iPhone). The optional coach sends the data it looks up to Anthropic, only with your own API key. |
 | Ultra 2 | Double tap triggers Refresh on watchOS 11+. Complications are tuned for the large display. |
 
 I have not benchmarked against Bevel, whose algorithms are proprietary, so
@@ -38,10 +40,11 @@ I have not benchmarked against Bevel, whose algorithms are proprietary, so
 ## Repository layout
 
 ```
-MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 141 unit tests.
+MarginCore/        Pure-Swift scoring engine (no Apple frameworks). 144 unit tests.
 MarginWatch/App/   SwiftUI watch app: HealthKit adapter, cache, model, views
 MarginWatch/Widgets/  WidgetKit complications
-MarginWatch/Shared/   Code shared by app and complications
+MarginWatch/Shared/   Code shared by app and complications (and the iPhone app)
+MarginPhone/       iPhone companion: dashboard, labs, food, coach, home/lock widgets
 project.yml        XcodeGen spec (the .xcodeproj is generated, not committed)
 docs/METHODOLOGY.md   Formulas, thresholds, measured error rates, limitations
 docs/PIPELINE_AUDIT.md   Data flow and every silent-failure point, with its handling
@@ -79,7 +82,7 @@ Groups isn't available for your team, you need the paid Apple Developer Program.
 ## Verify it yourself
 
 ```bash
-swift test --package-path MarginCore    # 141 tests, macOS or Linux
+swift test --package-path MarginCore    # 144 tests, macOS or Linux
 python3 scripts/check_product_language.py
 ```
 

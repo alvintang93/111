@@ -4,6 +4,7 @@ name: Margin
 options:
   deploymentTarget:
     watchOS: "10.0"
+    iOS: "17.0"
   createIntermediateGroups: true
 settings:
   base:
@@ -14,7 +15,6 @@ settings:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
-    TARGETED_DEVICE_FAMILY: "4"
 packages:
   MarginCore:
     path: MarginCore
@@ -32,6 +32,7 @@ targets:
       base:
         PRODUCT_NAME: Margin
         PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).watchkitapp
+        TARGETED_DEVICE_FAMILY: "4"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
     info:
@@ -39,7 +40,8 @@ targets:
       properties:
         CFBundleDisplayName: Margin
         WKApplication: true
-        WKWatchOnly: true
+        WKRunsIndependentlyOfCompanionApp: true
+        WKCompanionAppBundleIdentifier: $(BUNDLE_ID_PREFIX)
         WKBackgroundModes: [alarm, workout-processing]
         MarginAppGroupID: $(APP_GROUP_ID)
         NSHealthUpdateUsageDescription: Margin saves the strength workouts you log, with the heart rate and energy your watch records during them, so they count toward your rings and training load.
@@ -65,6 +67,7 @@ targets:
       base:
         PRODUCT_NAME: MarginWidgets
         PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).watchkitapp.widgets
+        TARGETED_DEVICE_FAMILY: "4"
         SKIP_INSTALL: "YES"
     info:
       path: MarginWatch/Support/Widgets-Info.plist
@@ -78,7 +81,77 @@ targets:
       properties:
         com.apple.security.application-groups:
           - $(APP_GROUP_ID)
+  MarginPhone:
+    type: application
+    platform: iOS
+    sources:
+      - path: MarginPhone/App
+      - path: MarginWatch/Shared
+    dependencies:
+      - package: MarginCore
+      - target: MarginPhoneWidgets
+      - target: Margin
+    settings:
+      base:
+        PRODUCT_NAME: Margin
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX)
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    info:
+      path: MarginPhone/Support/Info.plist
+      properties:
+        CFBundleDisplayName: Margin
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        MarginAppGroupID: $(APP_GROUP_ID)
+        NSHealthShareUsageDescription: Margin on iPhone reads nutrition and your Health data summaries to show trends and give the coach context. Your watch still does the scoring.
+        NSHealthUpdateUsageDescription: Margin saves the meals you log (energy, protein, carbohydrate, fat) to Health.
+        NSCalendarsFullAccessUsageDescription: The coach reads your calendar to fit training around your busy times, and adds sessions only when you tap Add to Calendar.
+    entitlements:
+      path: MarginPhone/Support/MarginPhone.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+        com.apple.security.application-groups:
+          - $(APP_GROUP_ID)
+  MarginPhoneWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: MarginPhone/Widgets
+      - path: MarginWatch/Shared
+    dependencies:
+      - package: MarginCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_NAME: MarginPhoneWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).widgets
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: "YES"
+    info:
+      path: MarginPhone/Support/Widgets-Info.plist
+      properties:
+        CFBundleDisplayName: Margin
+        MarginAppGroupID: $(APP_GROUP_ID)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: MarginPhone/Support/MarginPhoneWidgets.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - $(APP_GROUP_ID)
 schemes:
+  MarginPhone:
+    build:
+      targets:
+        MarginPhone: all
+    run:
+      config: Debug
+    archive:
+      config: Release
   Margin:
     build:
       targets:

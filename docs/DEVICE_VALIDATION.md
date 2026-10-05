@@ -307,6 +307,23 @@ Health asks again, this time also for permission to **write** workouts, heart ra
 | Records | Strength → Best estimated 1RM | Updates. "Record: …" appears on the last workout when you beat an earlier best |
 | Load | Load page, the next day | The strength workout's heart rate counts toward load, like any workout |
 
+## 14. IPHONE COMPANION AND COACH
+
+Install by running the **MarginPhone** scheme on your iPhone. It embeds the watch app.
+
+| Check | Where | Expected |
+|---|---|---|
+| Payload | iPhone → Today | After opening Margin on the watch, Today shows the same recovery, directive and tiles. Settings → Last data is recent |
+| Widgets | Home screen → add Margin widget → Edit | Pick any metric. After midnight it shows "–" until the watch syncs |
+| Labs | Body → Lab results → + | A result with a report range shows a check mark or a warning icon. The chart shows the range lines |
+| Food | Body → Log food | Saved meals appear in Health → Nutrition and in "Today in Health" |
+| Coach key | Settings → Coach | Saving a key shows "Saved in Keychain". Without a key, the Coach tab explains what would be sent |
+| Coach answer | Coach → "How recovered am I…" | The numbers quoted match Today |
+| Chart | "Show caffeine vs next-day HRV" | A chart appears in the chat, drawn from Margin's series |
+| Plan | "Plan my next 3 days around my calendar" | Session cards avoid busy times. Add to Calendar creates the event |
+| Ghost mode | Mask button | The chat clears and isn't there after relaunch. Leaving ghost mode restores the saved chat |
+| Check-ins | Settings → Check-ins | An enabled coach check-in notification opens the Coach tab and asks its question |
+
 ## Results sheet
 
 | Date | Test | Status / score / recommendation | HRV nights x/14 | Bg requests / executions | Complication state seen | PASS/FAIL | Notes |

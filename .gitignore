@@ -5,6 +5,7 @@ xcuserdata/
 DerivedData/
 build/
 MarginWatch/Support/
+MarginPhone/Support/
 
 # SwiftPM
 .build/

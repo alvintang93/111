@@ -13,7 +13,7 @@ BANNED = re.compile(
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
 # Software term for the developer screen the user asked for, not a health claim.
 ALLOWED = re.compile(r"developer diagnostics", re.IGNORECASE)
-ROOTS = ["MarginWatch", "MarginCore/Sources"]
+ROOTS = ["MarginWatch", "MarginPhone", "MarginCore/Sources"]
 
 failures = []
 for root in ROOTS:
